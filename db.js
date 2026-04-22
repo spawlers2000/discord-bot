@@ -1,24 +1,20 @@
-const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('./data.db');
+const fs = require('fs');
+const path = './data.json';
 
-db.run(`
-CREATE TABLE IF NOT EXISTS events (
-  id TEXT PRIMARY KEY,
-  name TEXT,
-  time INTEGER,
-  maxPlayers INTEGER,
-  maxTanks INTEGER,
-  maxHealers INTEGER,
-  maxDps INTEGER,
-  tanks INTEGER DEFAULT 0,
-  healers INTEGER DEFAULT 0,
-  dps INTEGER DEFAULT 0,
-  players TEXT,
-  waitlist TEXT,
-  channelId TEXT,
-  messageId TEXT,
-  endTime INTEGER,
-  eventTime INTEGER
-)
-`);
-module.exports = db;
+// 讀資料
+function loadDB() {
+  if (!fs.existsSync(path)) {
+    fs.writeFileSync(path, JSON.stringify({ events: [] }, null, 2));
+  }
+  return JSON.parse(fs.readFileSync(path));
+}
+
+// 存資料
+function saveDB(data) {
+  fs.writeFileSync(path, JSON.stringify(data, null, 2));
+}
+
+module.exports = {
+  loadDB,
+  saveDB
+};

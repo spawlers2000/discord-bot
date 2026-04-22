@@ -9,11 +9,26 @@ const {
   MessageFlags
 } = require('discord.js');
 
+const fs = require('fs');
 
+const file = './data.json';
+
+function load() {
+  if (!fs.existsSync(file)) {
+    fs.writeFileSync(file, JSON.stringify({ events: [] }, null, 2));
+  }
+  return JSON.parse(fs.readFileSync(file));
+}
+
+function save(data) {
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+}
+
+module.exports = { load, save };
 
 
 //const config = require('./config.json');
-const db = require('./db');
+//const db = require('./db');
 const eventManager = require('./eventManager');
 
 const client = new Client({
@@ -109,29 +124,27 @@ client.on(Events.InteractionCreate, async (interaction) => {
       // 在活動創建時，預設結束時間為1小時後
       const defaultEndTime = new Date(Date.now() + 3600000); // 預設結束時間：活動開始後1小時
 
-     db.run(`
-  INSERT INTO events (
-    id, name, time, maxPlayers, maxTanks, maxHealers, maxDps, tanks, healers, dps, players, waitlist, channelId, messageId, endTime,eventTime
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`, [
+    const db = require('./db');
+
+let data = db.load();
+
+data.events.push({
   id,
   name,
-  startTime, //Date.now() + 3600000,  // 這裡設置活動的時間，這是一個示例，你可以根據需求調整
-  max,
-  tanks,
-  healers,
-  dps,                    // 需要將 dps 傳遞過去
-  0,                      // 初始坦克數量為 0
-  0,                      // 初始補師數量為 0
-  0,                      // 初始輸出數量為 0
-  "[]",                   // players 預設為空數組
-  "[]",                   // waitlist 預設為空數組
-  interaction.channelId,
-  null,                   // 初始 messageId 為 null，稍後會更新
-  endTime.toISOString(), //endTime
-  eventTime.toISOString() //starTime                     
-]);
+  time: startTime,
+  maxPlayers: max,
+  maxTanks: tanks,
+  maxHealers: healers,
+  maxDps: dps,
+  players: [],
+  waitlist: [],
+  channelId: interaction.channelId,
+  messageId: null,
+  endTime: endTime.toISOString(),
+  eventTime: eventTime.toISOString()
+});
 
+db.save(data);
 
 
 
