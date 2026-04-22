@@ -126,7 +126,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     const db = require('./db');
 
-let data = db.load();
+//let data = db.load();
+db.loadDB()
 
 data.events.push({
   id,
