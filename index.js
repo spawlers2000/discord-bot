@@ -1,5 +1,5 @@
 require('dotenv').config();
-
+const fs = require('fs');
 const {
   Client,
   Events,
@@ -9,7 +9,7 @@ const {
   MessageFlags
 } = require('discord.js');
 
-const fs = require('fs');
+
 
 const file = './data.json';
 
@@ -288,7 +288,7 @@ db.save(data);
 
 
 //固定時間提醒
-const fs = require('fs');
+ 
 
 client.once('clientReady', () => {
   setInterval(async () => {
