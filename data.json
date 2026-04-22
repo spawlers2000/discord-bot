@@ -1,0 +1,39 @@
+{
+  "events": [
+    {
+      "id": "1776867035867",
+      "name": "AA",
+      "time": 1776867035867,
+      "maxPlayers": 10,
+      "maxTanks": 5,
+      "maxHealers": 5,
+      "maxDps": null,
+      "players": [],
+      "waitlist": [],
+      "channelId": "1468841017019990188",
+      "messageId": null,
+      "endTime": "2026-04-25T15:59:59.000Z",
+      "eventTime": "2026-04-25T12:00:00.000Z"
+    },
+    {
+      "id": "1776867294610",
+      "name": "AA",
+      "time": 1776867294611,
+      "maxPlayers": 10,
+      "maxTanks": 5,
+      "maxHealers": 5,
+      "maxDps": null,
+      "players": [
+        {
+          "id": "331352301245693964",
+          "role": "healers"
+        }
+      ],
+      "waitlist": [],
+      "channelId": "1468841017019990188",
+      "messageId": "1496514628547510392",
+      "endTime": "2026-04-25T15:59:59.000Z",
+      "eventTime": "2026-04-24T16:00:00.000Z"
+    }
+  ]
+}
