@@ -1,5 +1,4 @@
 require('dotenv').config();
-const fs = require('fs');
 
 const {
   Client,
@@ -11,7 +10,6 @@ const {
 } = require('discord.js');
 
 const db = require('./db');
-const eventManager = require('./eventManager');
 
 const client = new Client({
   intents: [
@@ -64,7 +62,6 @@ client.once(Events.ClientReady, () => {
 // Interaction
 // ==========================
 client.on(Events.InteractionCreate, async (interaction) => {
-
   try {
 
     // ======================
@@ -73,6 +70,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isChatInputCommand()) {
 
       if (interaction.commandName === 'event') {
+
+        await interaction.deferReply(); // ✅ 防 timeout
 
         const name = interaction.options.getString('name');
         const max = interaction.options.getInteger('max');
@@ -88,7 +87,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const id = Date.now().toString();
 
-        // ===== 讀 DB =====
         let data = db.loadDB();
 
         const newEvent = {
@@ -122,18 +120,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
             )
         );
 
-        const msg = await interaction.reply({
+        await interaction.editReply({
           content: buildEventMessage(newEvent),
-          components: [row],
-          fetchReply: true
+          components: [row]
         });
 
-        // 更新 messageId
+        const msg = await interaction.fetchReply();
+
+        // 存 messageId
         let data2 = db.loadDB();
         const event = data2.events.find(e => e.id === id);
-        if (event) {
-          event.messageId = msg.id;
-        }
+        if (event) event.messageId = msg.id;
         db.saveDB(data2);
       }
     }
@@ -158,11 +155,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
         }
 
-        event.players = event.players || [];
-
         const userId = interaction.user.id;
 
-        // 過期
         if (Date.now() > new Date(event.endTime).getTime()) {
           return interaction.reply({
             content: '❌ 活動已結束',
@@ -176,7 +170,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           db.saveDB(data);
 
           return interaction.update({
-            content: buildEventMessage(event)
+            content: buildEventMessage(event),
+            components: interaction.message.components
           });
         }
 
@@ -201,19 +196,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
 
         event.players.push({ id: userId, role });
-
         db.saveDB(data);
 
-        await interaction.reply({
-          content: `✅ 已選擇：${role}`,
-          flags: MessageFlags.Ephemeral
-        });
-
-        const channel = await client.channels.fetch(event.channelId);
-        const msg = await channel.messages.fetch(event.messageId);
-
-        await msg.edit({
-          content: buildEventMessage(event)
+        // ✅ 只用 update（避免 40060）
+        await interaction.update({
+          content: buildEventMessage(event),
+          components: interaction.message.components
         });
       }
     }
@@ -221,11 +209,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
   } catch (err) {
     console.error("Interaction Error:", err);
 
-    if (!interaction.replied) {
-      await interaction.reply({
-        content: '❌ 系統錯誤',
-        flags: MessageFlags.Ephemeral
-      });
+    try {
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({
+          content: '❌ 系統錯誤'
+        });
+      } else {
+        await interaction.reply({
+          content: '❌ 系統錯誤',
+          flags: MessageFlags.Ephemeral
+        });
+      }
+    } catch (e) {
+      console.error("Error while handling error:", e);
     }
   }
 });
