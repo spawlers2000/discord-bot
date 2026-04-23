@@ -62,9 +62,6 @@ client.once(Events.ClientReady, () => {
 // Interaction
 // ==========================
 client.on(Events.InteractionCreate, async (interaction) => {
-  // 🔥 防止重複處理
-  if (interaction.replied || interaction.deferred) return;
-
   try {
 
     // ======================
@@ -74,7 +71,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (interaction.commandName === 'event') {
 
-        await interaction.deferReply().catch(() => {}); // 🔥 防炸
+        await interaction.deferReply();
 
         const name = interaction.options.getString('name');
         const max = interaction.options.getInteger('max');
@@ -91,6 +88,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const id = Date.now().toString();
 
         let data = db.loadDB();
+        if (!data.events) data.events = [];
 
         const newEvent = {
           id,
@@ -145,8 +143,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (interaction.customId.startsWith('role_')) {
 
-       await interaction.deferUpdate().catch(() => {}); // 🔥 防炸
-
         const role = interaction.values[0];
         const id = interaction.customId.split('_')[1];
 
@@ -155,18 +151,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const event = data.events.find(e => e.id === id);
 
-         if (!event) {
-      console.log("找不到活動ID:", id);
+        if (!event) {
+          console.log("找不到活動ID:", id);
 
-      return interaction.editReply({
-        content: '❌ 活動不存在（資料可能錯誤）'
-      });
-    }
+          return interaction.reply({
+            content: '❌ 活動不存在（可能是舊訊息）',
+            flags: MessageFlags.Ephemeral
+          });
+        }
 
         const userId = interaction.user.id;
 
         if (Date.now() > new Date(event.endTime).getTime()) {
-          return interaction.editReply({
+          return interaction.reply({
             content: '❌ 活動已結束',
             flags: MessageFlags.Ephemeral
           });
@@ -177,7 +174,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           event.players = event.players.filter(p => p.id !== userId);
           db.saveDB(data);
 
-          return interaction.editReply({
+          return interaction.update({
             content: buildEventMessage(event),
             components: interaction.message.components
           });
@@ -190,14 +187,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const healers = event.players.filter(p => p.role === 'healers').length;
 
         if (role === 'tanks' && tanks >= event.maxTanks) {
-          return interaction.editReply({
+          return interaction.reply({
             content: '❌ 坦已滿',
             flags: MessageFlags.Ephemeral
           });
         }
 
         if (role === 'healers' && healers >= event.maxHealers) {
-          return interaction.editReply({
+          return interaction.reply({
             content: '❌ 補已滿',
             flags: MessageFlags.Ephemeral
           });
@@ -206,8 +203,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         event.players.push({ id: userId, role });
         db.saveDB(data);
 
-        // ✅ 只用 update（避免 40060）
-        await interaction.editReply({
+        // 🔥 正確：用 update
+        await interaction.update({
           content: buildEventMessage(event),
           components: interaction.message.components
         });
@@ -215,22 +212,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
   } catch (err) {
-  console.error("Interaction Error:", err);
+    console.error("Interaction Error:", err);
 
-  try {
-    if (interaction.deferred || interaction.replied) {
-      await interaction.editReply({
-        content: '❌ 系統錯誤'
-      }).catch(() => {});
-    } else {
+    try {
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({
+          content: '❌ 系統錯誤'
+        }).catch(() => {});
+      } else {
         await interaction.reply({
-        content: '❌ 系統錯誤',
-        flags: MessageFlags.Ephemeral
-         }).catch(() => {});
+          content: '❌ 系統錯誤',
+          flags: MessageFlags.Ephemeral
+        }).catch(() => {});
       }
-    } catch (e) {
-      console.error("Error while handling error:", e);
-    }
+    } catch {}
   }
 });
 
@@ -255,7 +250,6 @@ client.once(Events.ClientReady, () => {
         const channel = await client.channels.fetch("1439790753940242483");
 
         await channel.send("<@&1451525866231169147> ⏰ 活動即將開始！");
-
       }
 
     } catch (err) {
