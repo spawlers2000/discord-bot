@@ -128,7 +128,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const msg = await interaction.fetchReply();
 
-        // 存 messageId
         let data2 = db.loadDB();
         const event = data2.events.find(e => e.id === id);
         if (event) event.messageId = msg.id;
@@ -153,58 +152,54 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         if (!event) {
           console.log("找不到活動ID:", id);
-
-          return interaction.reply({
-            content: '❌ 活動不存在（可能是舊訊息）',
-            flags: MessageFlags.Ephemeral
-          });
+          return interaction.deferUpdate();
         }
 
         const userId = interaction.user.id;
 
+        // 活動結束
         if (Date.now() > new Date(event.endTime).getTime()) {
-          return interaction.reply({
-            content: '❌ 活動已結束',
-            flags: MessageFlags.Ephemeral
-          });
+          return interaction.deferUpdate();
         }
 
-        // leave
-        if (role === 'leave') {
-          event.players = event.players.filter(p => p.id !== userId);
-          db.saveDB(data);
-
-          return interaction.update({
-            content: buildEventMessage(event),
-            components: interaction.message.components
-          });
-        }
-
-        // 移除舊職業
+        // 移除舊角色
         event.players = event.players.filter(p => p.id !== userId);
 
         const tanks = event.players.filter(p => p.role === 'tanks').length;
         const healers = event.players.filter(p => p.role === 'healers').length;
 
+        // 滿人檢查
         if (role === 'tanks' && tanks >= event.maxTanks) {
-          return interaction.reply({
+          return interaction.message.edit({
             content: '❌ 坦已滿',
-            flags: MessageFlags.Ephemeral
+            components: interaction.message.components
           });
         }
 
         if (role === 'healers' && healers >= event.maxHealers) {
-          return interaction.reply({
+          return interaction.message.edit({
             content: '❌ 補已滿',
-            flags: MessageFlags.Ephemeral
+            components: interaction.message.components
           });
         }
 
+        // 取消報名
+        if (role === 'leave') {
+          db.saveDB(data);
+
+          return interaction.message.edit({
+            content: buildEventMessage(event),
+            components: interaction.message.components
+          });
+        }
+
+        // 加入新角色
         event.players.push({ id: userId, role });
+
         db.saveDB(data);
 
-        // 🔥 正確：用 update
-        await interaction.update({
+        // 更新訊息
+        await interaction.message.edit({
           content: buildEventMessage(event),
           components: interaction.message.components
         });
@@ -213,19 +208,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   } catch (err) {
     console.error("Interaction Error:", err);
-
-    try {
-      if (interaction.deferred || interaction.replied) {
-        await interaction.editReply({
-          content: '❌ 系統錯誤'
-        }).catch(() => {});
-      } else {
-        await interaction.reply({
-          content: '❌ 系統錯誤',
-          flags: MessageFlags.Ephemeral
-        }).catch(() => {});
-      }
-    } catch {}
   }
 });
 
