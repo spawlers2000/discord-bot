@@ -62,6 +62,9 @@ client.once(Events.ClientReady, () => {
 // Interaction
 // ==========================
 client.on(Events.InteractionCreate, async (interaction) => {
+  // 🔥 防止重複處理
+  if (interaction.replied || interaction.deferred) return;
+
   try {
 
     // ======================
@@ -71,7 +74,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (interaction.commandName === 'event') {
 
-        await interaction.deferReply(); // ✅ 防 timeout
+        await interaction.deferReply().catch(() => {}); // 🔥 防炸
 
         const name = interaction.options.getString('name');
         const max = interaction.options.getInteger('max');
@@ -142,7 +145,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (interaction.customId.startsWith('role_')) {
 
-        await interaction.deferUpdate(); // 🔥 核心修正
+       await interaction.deferUpdate().catch(() => {}); // 🔥 防炸
 
         const role = interaction.values[0];
         const id = interaction.customId.split('_')[1];
@@ -212,18 +215,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
   } catch (err) {
-    console.error("Interaction Error:", err);
+  console.error("Interaction Error:", err);
 
-    try {
-      if (interaction.deferred || interaction.replied) {
-        await interaction.editReply({
-          content: '❌ 系統錯誤'
-        });
-      } else {
-        await interaction.editReply({
-          content: '❌ 系統錯誤',
-          flags: MessageFlags.Ephemeral
-        });
+  try {
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({
+        content: '❌ 系統錯誤'
+      }).catch(() => {});
+    } else {
+        await interaction.reply({
+        content: '❌ 系統錯誤',
+        flags: MessageFlags.Ephemeral
+         }).catch(() => {});
       }
     } catch (e) {
       console.error("Error while handling error:", e);
