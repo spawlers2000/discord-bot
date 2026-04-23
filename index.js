@@ -87,7 +87,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const id = Date.now().toString();
 
-        let data = db.loadDB();
+       let data = await db.loadDB();
         if (!data.events) data.events = [];
 
         const newEvent = {
@@ -145,7 +145,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const role = interaction.values[0];
         const id = interaction.customId.split('_')[1];
 
-        let data = db.loadDB();
+        let data = await db.loadDB();
         if (!data.events) data.events = [];
 
         const event = data.events.find(e => e.id === id);

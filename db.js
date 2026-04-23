@@ -1,17 +1,33 @@
-const fs = require('fs');
-const path = './data.json';
+const { MongoClient } = require('mongodb');
 
-// 讀資料
-function loadDB() {
-  if (!fs.existsSync(path)) {
-    fs.writeFileSync(path, JSON.stringify({ events: [] }, null, 2));
+const uri = process.env.MONGO_URI;
+
+const client = new MongoClient(uri);
+
+let db;
+
+async function connectDB() {
+  if (!db) {
+    await client.connect();
+    db = client.db('discord-bot');
   }
-  return JSON.parse(fs.readFileSync(path));
+  return db;
 }
 
-// 存資料
-function saveDB(data) {
-  fs.writeFileSync(path, JSON.stringify(data, null, 2));
+// 取得活動
+async function loadDB() {
+  const database = await connectDB();
+  const events = await database.collection('events').find().toArray();
+  return { events };
+}
+
+// 儲存活動（簡化版）
+async function saveDB(data) {
+  const database = await connectDB();
+  const collection = database.collection('events');
+
+  await collection.deleteMany({});
+  await collection.insertMany(data.events || []);
 }
 
 module.exports = {
