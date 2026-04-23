@@ -142,23 +142,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (interaction.customId.startsWith('role_')) {
 
+        await interaction.deferUpdate(); // 🔥 核心修正
+
         const role = interaction.values[0];
         const id = interaction.customId.split('_')[1];
 
         let data = db.loadDB();
+        if (!data.events) data.events = [];
+
         const event = data.events.find(e => e.id === id);
 
-        if (!event) {
-          return interaction.reply({
-            content: '❌ 活動不存在',
-            flags: MessageFlags.Ephemeral
-          });
-        }
+         if (!event) {
+      console.log("找不到活動ID:", id);
+
+      return interaction.editReply({
+        content: '❌ 活動不存在（資料可能錯誤）'
+      });
+    }
 
         const userId = interaction.user.id;
 
         if (Date.now() > new Date(event.endTime).getTime()) {
-          return interaction.reply({
+          return interaction.editReply({
             content: '❌ 活動已結束',
             flags: MessageFlags.Ephemeral
           });
@@ -169,7 +174,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           event.players = event.players.filter(p => p.id !== userId);
           db.saveDB(data);
 
-          return interaction.update({
+          return interaction.editReply({
             content: buildEventMessage(event),
             components: interaction.message.components
           });
@@ -182,14 +187,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const healers = event.players.filter(p => p.role === 'healers').length;
 
         if (role === 'tanks' && tanks >= event.maxTanks) {
-          return interaction.reply({
+          return interaction.editReply({
             content: '❌ 坦已滿',
             flags: MessageFlags.Ephemeral
           });
         }
 
         if (role === 'healers' && healers >= event.maxHealers) {
-          return interaction.reply({
+          return interaction.editReply({
             content: '❌ 補已滿',
             flags: MessageFlags.Ephemeral
           });
@@ -199,7 +204,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         db.saveDB(data);
 
         // ✅ 只用 update（避免 40060）
-        await interaction.update({
+        await interaction.editReply({
           content: buildEventMessage(event),
           components: interaction.message.components
         });
@@ -215,7 +220,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           content: '❌ 系統錯誤'
         });
       } else {
-        await interaction.reply({
+        await interaction.editReply({
           content: '❌ 系統錯誤',
           flags: MessageFlags.Ephemeral
         });
