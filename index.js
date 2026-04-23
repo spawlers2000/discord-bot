@@ -6,7 +6,6 @@ const {
   GatewayIntentBits,
   ActionRowBuilder,
   StringSelectMenuBuilder,
-  MessageFlags
 } = require('discord.js');
 
 const db = require('./db');
@@ -45,9 +44,11 @@ function buildEventMessage(event) {
 ---
 
 玩家：
-${event.players.map(p =>
-  `${p.role === 'tanks' ? '🛡' : p.role === 'healers' ? '💚' : '💥'} <@${p.id}>`
-).join('\n') || '無'}
+${event.players.length
+  ? event.players.map(p =>
+      `${p.role === 'tanks' ? '🛡' : p.role === 'healers' ? '💚' : '💥'} <@${p.id}>`
+    ).join('\n')
+  : '無'}
 `;
 }
 
@@ -62,10 +63,11 @@ client.once(Events.ClientReady, () => {
 // Interaction
 // ==========================
 client.on(Events.InteractionCreate, async (interaction) => {
+
   try {
 
     // ======================
-    // slash command
+    // Slash Command
     // ======================
     if (interaction.isChatInputCommand()) {
 
@@ -87,7 +89,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const id = Date.now().toString();
 
-       let data = await db.loadDB();
+        let data = await db.loadDB();
         if (!data.events) data.events = [];
 
         const newEvent = {
@@ -99,7 +101,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           maxHealers: healers,
           maxDps: dps,
           players: [],
-          waitlist: [],
           channelId: interaction.channelId,
           messageId: null,
           endTime: endTime.toISOString(),
@@ -128,7 +129,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const msg = await interaction.fetchReply();
 
-        let data2 = db.loadDB();
+        const data2 = await db.loadDB();
         const event = data2.events.find(e => e.id === id);
         if (event) event.messageId = msg.id;
         db.saveDB(data2);
@@ -136,74 +137,74 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     // ======================
-    // select menu
+    // Select Menu（重點修好）
     // ======================
     if (interaction.isStringSelectMenu()) {
+      if (!interaction.customId.startsWith('role_')) return;
 
-      if (interaction.customId.startsWith('role_')) {
+      await interaction.deferUpdate(); // ✔ 一定第一行 ACK
 
-        const role = interaction.values[0];
-        const id = interaction.customId.split('_')[1];
+      const role = interaction.values[0];
+      const id = interaction.customId.split('_')[1];
 
-        let data = await db.loadDB();
-        if (!data.events) data.events = [];
+      let data = await db.loadDB();
+      if (!data.events) data.events = [];
 
-        const event = data.events.find(e => e.id === id);
+      const event = data.events.find(e => e.id === id);
 
-        if (!event) {
-          console.log("找不到活動ID:", id);
-          return interaction.deferUpdate();
-        }
+      if (!event) {
+        console.log("找不到活動ID:", id);
+        return;
+      }
 
-        const userId = interaction.user.id;
+      const userId = interaction.user.id;
 
-        // 活動結束
-        if (Date.now() > new Date(event.endTime).getTime()) {
-          return interaction.deferUpdate();
-        }
+      // 活動過期
+      if (Date.now() > new Date(event.endTime).getTime()) {
+        return;
+      }
 
-        // 移除舊角色
-        event.players = event.players.filter(p => p.id !== userId);
+      // 移除舊職業
+      event.players = event.players.filter(p => p.id !== userId);
 
-        const tanks = event.players.filter(p => p.role === 'tanks').length;
-        const healers = event.players.filter(p => p.role === 'healers').length;
+      const tanks = event.players.filter(p => p.role === 'tanks').length;
+      const healers = event.players.filter(p => p.role === 'healers').length;
 
-        // 滿人檢查
-        if (role === 'tanks' && tanks >= event.maxTanks) {
-          return interaction.message.edit({
-            content: '❌ 坦已滿',
-            components: interaction.message.components
-          });
-        }
+      // 滿人限制
+      if (role === 'tanks' && tanks >= event.maxTanks) {
+        return interaction.message.edit({
+          content: '❌ 坦已滿',
+          components: interaction.message.components
+        });
+      }
 
-        if (role === 'healers' && healers >= event.maxHealers) {
-          return interaction.message.edit({
-            content: '❌ 補已滿',
-            components: interaction.message.components
-          });
-        }
+      if (role === 'healers' && healers >= event.maxHealers) {
+        return interaction.message.edit({
+          content: '❌ 補已滿',
+          components: interaction.message.components
+        });
+      }
 
-        // 取消報名
-        if (role === 'leave') {
-          db.saveDB(data);
-
-          return interaction.update({
-      content: buildEventMessage(event),
-      components: interaction.message.components
-          });
-        }
-
-        // 加入新角色
-        event.players.push({ id: userId, role });
-
+      // 取消報名
+      if (role === 'leave') {
         db.saveDB(data);
 
-        // 更新訊息
-        await interaction.message.edit({
+        return interaction.message.edit({
           content: buildEventMessage(event),
           components: interaction.message.components
         });
       }
+
+      // 加入
+      event.players.push({ id: userId, role });
+
+      db.saveDB(data);
+
+      // ✔ 唯一正確更新方式
+      await interaction.message.edit({
+        content: buildEventMessage(event),
+        components: interaction.message.components
+      });
     }
 
   } catch (err) {
@@ -212,7 +213,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 // ==========================
-// scheduler
+// Scheduler
 // ==========================
 client.once(Events.ClientReady, () => {
 
@@ -239,7 +240,6 @@ client.once(Events.ClientReady, () => {
     }
 
   }, 60000);
-
 });
 
 client.login(process.env.TOKEN);
