@@ -1,6 +1,9 @@
 const { MongoClient } = require('mongodb');
-
+require('dotenv').config();
 const uri = process.env.MONGO_URI;
+if (!uri) {
+  throw new Error("❌ MONGO_URI 沒設定（Railway Variables）");
+}
 
 const client = new MongoClient(uri);
 
