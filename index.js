@@ -187,9 +187,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (role === 'leave') {
           db.saveDB(data);
 
-          return interaction.message.edit({
-            content: buildEventMessage(event),
-            components: interaction.message.components
+          return interaction.update({
+      content: buildEventMessage(event),
+      components: interaction.message.components
           });
         }
 
