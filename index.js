@@ -23,10 +23,10 @@ const client = new Client({
 // ==========================
 // Emoji 統一（重點修正）
 // ==========================
-const ROLE_ICON = {
-  tanks: '🛡️',
-  healers: '💚',
-  dps: '💥'
+const FORCE_ICON = {
+  tanks: '🛡️\uFE0F',
+  healers: '💚\uFE0F',
+  dps: '💥\uFE0F'
 };
 
 // ==========================
