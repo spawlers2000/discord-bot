@@ -139,34 +139,42 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     // ======================
-    // Select Menu（重點修好）
+    // Select Menu
     // ======================
     if (interaction.isStringSelectMenu()) {
       if (!interaction.customId.startsWith('role_')) return;
 
-      await interaction.deferUpdate(); // ✔ 一定第一行 ACK
+      await interaction.deferUpdate(); // 
 
       const role = interaction.values[0];
 
-      // ======================
+// ======================
 // 🗑️ 刪除活動
 // ======================
 if (role === 'del') {
 
-  // ❗權限判斷（只有建立者能刪）
+  // 保護：確保 events 存在
+  if (!data.events) data.events = [];
+
+  // 權限
   if (interaction.user.id !== event.ownerId) {
     return interaction.followUp({
-      content: '❌ 只有活動建立者可以刪除',
+      content: '❌ 只有建立者可以刪除',
       ephemeral: true
     });
   }
 
-  // 從資料庫刪掉
-  data.events = data.events.filter(e => e.id !== id);
-  await db.saveDB(data);
+  try {
+    // 刪 DB
+    data.events = data.events.filter(e => e.id !== id);
+    await db.saveDB(data);
 
-  // 刪除訊息
-  await interaction.message.delete();
+    // 刪訊息（加 try 避免炸）
+    await interaction.message.delete();
+
+  } catch (err) {
+    console.error("刪除失敗:", err);
+  }
 
   return;
 }
