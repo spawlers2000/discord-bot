@@ -205,16 +205,13 @@ if (role === 'del') {
       const healers = event.players.filter(p => p.role === 'healers').length;
 
       // 滿人限制
-      //if (role === 'tanks' && tanks >= event.maxTanks) {
-      //  return interaction.message.edit({
-       //   content: '❌ 坦已滿',
-       //   components: interaction.message.components
-       // });
-     // }
-     return interaction.followUp({
-  content: '❌ 坦已滿',
-  ephemeral: true
-});
+      if (role === 'tanks' && tanks >= event.maxTanks) {
+        return interaction.message.edit({
+          content: '❌ 坦已滿',
+          components: interaction.message.components
+        });
+      }
+
 
       if (role === 'healers' && healers >= event.maxHealers) {
         return interaction.message.edit({
