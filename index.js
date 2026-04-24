@@ -37,8 +37,13 @@ function safeDB(data) {
   return data;
 }
 
+function formatDate(date) {
+  if (!date) return '未設定';
+  return new Date(date).toLocaleDateString('zh-TW');
+}
+
 // ==========================
-// RPG STYLE EMBED
+// RPG STYLE EMBED (FIXED)
 // ==========================
 function buildEmbed(event) {
 
@@ -79,6 +84,20 @@ function buildEmbed(event) {
         inline: true
       },
 
+      // ⭐ FIXED：正確欄位 eventTime
+      {
+        name: '📅 活動開始',
+        value: formatDate(event.eventTime),
+        inline: true
+      },
+
+      // ⭐ FIXED：正確欄位 endTime
+      {
+        name: '⏳ 報名截止',
+        value: formatDate(event.endTime),
+        inline: true
+      },
+
       {
         name: `🛡 坦 (${tanks.length}/${event.maxTanks})`,
         value: list(tanks, '🛡️'),
@@ -100,7 +119,7 @@ function buildEmbed(event) {
         value: queue.length ? queue.map(q => `⏳ <@${q.id}>`).join('\n') : '—'
       }
     )
-    
+     
 }
 
 // ==========================
