@@ -144,10 +144,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isStringSelectMenu()) {
       if (!interaction.customId.startsWith('role_')) return;
 
-      await interaction.deferUpdate(); // 
-
-      const role = interaction.values[0];
-
 // ======================
 // 🗑️ 刪除活動
 // ======================
@@ -178,6 +174,13 @@ if (role === 'del') {
 
   return;
 }
+
+
+      await interaction.deferUpdate(); // 
+
+      const role = interaction.values[0];
+
+
 
       const id = interaction.customId.split('_')[1];
 
