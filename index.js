@@ -37,9 +37,8 @@ function safeDB(data) {
   return data;
 }
 
-
 // ==========================
-// RPG STYLE EMBED (FIXED)
+// RPG STYLE EMBED
 // ==========================
 function buildEmbed(event) {
 
@@ -79,18 +78,15 @@ function buildEmbed(event) {
         value: `${event.players.length} / ${event.maxPlayers}`,
         inline: true
       },
-
-      // ⭐ FIXED：正確欄位 eventTime
+      
       {
         name: '📅 活動開始',
-        value: formatDate(event.eventTime),
+        value: event.startTime ? `${event.startTime}` : '未設定',
         inline: true
       },
-
-      // ⭐ FIXED：正確欄位 endTime
       {
         name: '⏳ 報名截止',
-        value: formatDate(event.endTime),
+        value: event.signupEnd ? `${event.endTime}` : '未設定',
         inline: true
       },
 
