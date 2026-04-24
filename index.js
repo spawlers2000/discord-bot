@@ -80,16 +80,24 @@ function buildEmbed(event) {
       },
       
       {
-        name: '📅 活動開始',
-        value: event.eventTime ? `${event.eventTime}` : '未設定',
-        inline: true
-      },
-      {
-        name: '⏳ 報名截止',
-        value: event.endTime ? `${event.endTime}` : '未設定',
-        inline: true
-      },
-
+  name: '📅 活動開始',
+  value: event.eventTime
+    ? new Date(event.eventTime).toLocaleDateString('zh-TW')
+    : '未設定',
+  inline: true
+},
+{
+  name: '⏳ 報名截止',
+  value: event.endTime
+    ? new Date(event.endTime).toLocaleDateString('zh-TW')
+    : '未設定',
+  inline: true
+},
+{
+  name: '\u200b',
+  value: '\u200b',
+  inline: true
+},
       {
         name: `🛡 坦 (${tanks.length}/${event.maxTanks})`,
         value: list(tanks, '🛡️'),
