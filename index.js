@@ -100,7 +100,7 @@ function buildEmbed(event) {
         value: queue.length ? queue.map(q => `⏳ <@${q.id}>`).join('\n') : '—'
       }
     )
-    .setFooter({ text: 'RPG Raid System • Discord Dungeon Party' });
+    
 }
 
 // ==========================
