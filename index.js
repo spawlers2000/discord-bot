@@ -195,8 +195,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           players: [],
           queue: [],
           ownerId: interaction.user.id,
-          endTime: new Date(interaction.options.getString('end-time') + 'T23:59:59').toISOString(),
-          eventTime: new Date(interaction.options.getString('event-time') + 'T00:00:00').toISOString(),
+          endTime: new Date(interaction.options.getString('end-time') ).toISOString(),
+          eventTime: new Date(interaction.options.getString('event-time') ).toISOString(),
           messageId: null
         };
 
