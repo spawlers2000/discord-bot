@@ -81,12 +81,12 @@ function buildEmbed(event) {
       
       {
         name: '📅 活動開始',
-        value: event.startTime ? `${event.eventTime}` : '未設定',
+        value: event.eventTime ? `${event.eventTime}` : '未設定',
         inline: true
       },
       {
         name: '⏳ 報名截止',
-        value: event.signupEnd ? `${event.endTime}` : '未設定',
+        value: event.endTime ? `${event.endTime}` : '未設定',
         inline: true
       },
 
