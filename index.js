@@ -104,7 +104,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           channelId: interaction.channelId,
           messageId: null,
           endTime: endTime.toISOString(),
-          eventTime: eventTime.toISOString()
+          eventTime: eventTime.toISOString(),
+          ownerId: interaction.user.id // 紀錄建立的人
         };
 
         data.events.push(newEvent);
@@ -118,7 +119,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
               { label: '坦克', value: 'tanks', emoji: '🛡' },
               { label: '補師', value: 'healers', emoji: '💚' },
               { label: '輸出', value: 'dps', emoji: '💥' },
-              { label: '取消', value: 'leave', emoji: '❌' }
+              { label: '取消報名', value: 'leave', emoji: '❌' },
+              { label: '刪除活動', value: 'del', emoji: '🗑️' }
             )
         );
 
@@ -145,6 +147,30 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await interaction.deferUpdate(); // ✔ 一定第一行 ACK
 
       const role = interaction.values[0];
+
+      // ======================
+// 🗑️ 刪除活動
+// ======================
+if (role === 'del') {
+
+  // ❗權限判斷（只有建立者能刪）
+  if (interaction.user.id !== event.ownerId) {
+    return interaction.followUp({
+      content: '❌ 只有活動建立者可以刪除',
+      ephemeral: true
+    });
+  }
+
+  // 從資料庫刪掉
+  data.events = data.events.filter(e => e.id !== id);
+  await db.saveDB(data);
+
+  // 刪除訊息
+  await interaction.message.delete();
+
+  return;
+}
+
       const id = interaction.customId.split('_')[1];
 
       let data = await db.loadDB();
@@ -171,12 +197,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const healers = event.players.filter(p => p.role === 'healers').length;
 
       // 滿人限制
-      if (role === 'tanks' && tanks >= event.maxTanks) {
-        return interaction.message.edit({
-          content: '❌ 坦已滿',
-          components: interaction.message.components
-        });
-      }
+      //if (role === 'tanks' && tanks >= event.maxTanks) {
+      //  return interaction.message.edit({
+       //   content: '❌ 坦已滿',
+       //   components: interaction.message.components
+       // });
+     // }
+     return interaction.followUp({
+  content: '❌ 坦已滿',
+  ephemeral: true
+});
 
       if (role === 'healers' && healers >= event.maxHealers) {
         return interaction.message.edit({
@@ -213,7 +243,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 // ==========================
-// Scheduler
+// 時間提醒
 // ==========================
 client.once(Events.ClientReady, () => {
 
