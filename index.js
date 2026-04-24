@@ -21,7 +21,16 @@ const client = new Client({
 });
 
 // ==========================
-// DB safety
+// Emoji 統一（重點修正）
+// ==========================
+const ROLE_ICON = {
+  tanks: '🛡️',
+  healers: '💚',
+  dps: '💥'
+};
+
+// ==========================
+// DB 安全
 // ==========================
 function safeDB(data) {
   if (!data.events) data.events = [];
@@ -29,7 +38,7 @@ function safeDB(data) {
 }
 
 // ==========================
-// UI
+// Embed UI
 // ==========================
 function buildEmbed(event) {
 
@@ -49,19 +58,16 @@ function buildEmbed(event) {
       { name: '👥 人數', value: `${event.players.length}/${event.maxPlayers}`, inline: true },
       { name: '⏳ 截止', value: new Date(event.endTime).toLocaleDateString('zh-TW'), inline: true },
 
-      { name: `🛡 坦 (${tanks.length}/${event.maxTanks})`, value: list(tanks, '🛡'), inline: true },
-      { name: `💚 補 (${healers.length}/${event.maxHealers})`, value: list(healers, '💚'), inline: true },
-
-      // 🔥 DPS 無上限（修正重點）
-      { name: `💥 輸出 (${dps.length})`, value: list(dps, '💥'), inline: true },
+      { name: `🛡 坦 (${tanks.length}/${event.maxTanks})`, value: list(tanks, ROLE_ICON.tanks), inline: true },
+      { name: `💚 補 (${healers.length}/${event.maxHealers})`, value: list(healers, ROLE_ICON.healers), inline: true },
+      { name: `💥 輸出 (${dps.length})`, value: list(dps, ROLE_ICON.dps), inline: true },
 
       { name: '📥 候補', value: queue.length ? queue.map(q => `<@${q.id}>`).join('\n') : '無' }
-    )
-    .setFooter({ text: '按鈕操作：報名 / 取消 / 候補 / 刪除' });
+    );
 }
 
 // ==========================
-// Buttons
+// 按鈕 UI
 // ==========================
 function buttons(event) {
 
@@ -82,7 +88,7 @@ function buttons(event) {
       .setStyle(ButtonStyle.Success)
       .setDisabled(healers >= event.maxHealers),
 
-    // 🔥 DPS 永遠可加入（無上限）
+    // DPS 無上限
     new ButtonBuilder()
       .setCustomId('dps')
       .setLabel('💥 輸出')
@@ -97,7 +103,7 @@ function buttons(event) {
 }
 
 // ==========================
-// Owner button
+// 管理按鈕
 // ==========================
 function ownerBtn(event) {
   return new ActionRowBuilder().addComponents(
@@ -122,6 +128,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   try {
 
+    // ======================
+    // 建立活動
+    // ======================
     if (interaction.isChatInputCommand()) {
 
       if (interaction.commandName === 'event') {
@@ -138,7 +147,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           maxPlayers: interaction.options.getInteger('max'),
           maxTanks: interaction.options.getInteger('tanks'),
           maxHealers: interaction.options.getInteger('healers'),
-          maxDps: 999999, // 🔥 DPS 無上限（保險）
+          maxDps: 999999,
           players: [],
           queue: [],
           ownerId: interaction.user.id,
@@ -163,9 +172,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
-    // ==========================
-    // Buttons
-    // ==========================
+    // ======================
+    // 按鈕操作
+    // ======================
     if (interaction.isButton()) {
 
       let data = safeDB(await db.loadDB());
@@ -216,20 +225,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
       // 加入
       // ======================
       let role = null;
+
       if (interaction.customId === 'tank') role = 'tanks';
       if (interaction.customId === 'healer') role = 'healers';
       if (interaction.customId === 'dps') role = 'dps';
 
       if (!role) return;
 
-      // 移除舊
+      // 移除舊資料
       event.players = event.players.filter(p => p.id !== uid);
 
       const count = event.players.filter(p => p.role === role).length;
       const limit =
         role === 'tanks' ? event.maxTanks :
         role === 'healers' ? event.maxHealers :
-        Infinity; // 🔥 DPS 無上限
+        Infinity;
 
       // 滿人 → 候補
       if (count >= limit) {
