@@ -47,11 +47,11 @@ function buildEmbed(event) {
   const dps = event.players.filter(p => p.role === 'dps');
   const queue = event.queue || [];
 
-  const bar = (cur, max) => {
-    const fill = '█'.repeat(Math.min(cur, max));
-    const empty = '░'.repeat(Math.max(max - cur, 0));
-    return `${fill}${empty} (${cur}/${max})`;
-  };
+  //const bar = (cur, max) => {
+  //  const fill = '█'.repeat(Math.min(cur, max));
+   // const empty = '░'.repeat(Math.max(max - cur, 0));
+   // return `${fill}${empty} (${cur}/${max})`;
+ // };
 
   const list = (arr, icon) =>
     arr.length ? arr.map(p => `${icon} <@${p.id}>`).join('\n') : '—';
@@ -97,7 +97,7 @@ function buildEmbed(event) {
         value: queue.length ? queue.map(q => `⏳ <@${q.id}>`).join('\n') : '—'
       }
     )
-    .setFooter({ text: 'RPG Raid System • 按鈕加入隊伍' });
+    
 }
 
 // ==========================
