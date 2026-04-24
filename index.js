@@ -47,23 +47,21 @@ function buildEmbed(event) {
   const dps = event.players.filter(p => p.role === 'dps');
   const queue = event.queue || [];
 
-  //const bar = (cur, max) => {
-  //  const fill = '█'.repeat(Math.min(cur, max));
-   // const empty = '░'.repeat(Math.max(max - cur, 0));
-   // return `${fill}${empty} (${cur}/${max})`;
- // };
-
   const list = (arr, icon) =>
     arr.length ? arr.map(p => `${icon} <@${p.id}>`).join('\n') : '—';
 
-  const statusColor =
-    event.players.length >= event.maxPlayers ? 0xe74c3c :
-    event.players.length >= event.maxPlayers * 0.7 ? 0xf1c40f :
-    0x2ecc71;
+  const status =
+    event.players.length >= event.maxPlayers ? '🔴 已滿'
+    : event.players.length >= event.maxPlayers * 0.7 ? '🟡 即將滿'
+    : '🟢 招募中';
 
   return new EmbedBuilder()
-    .setColor(statusColor)
-    .setTitle(`⚔️ 副本隊伍：${event.name}`)
+    .setColor(
+      event.players.length >= event.maxPlayers ? 0xe74c3c :
+      event.players.length >= event.maxPlayers * 0.7 ? 0xf1c40f :
+      0x2ecc71
+    )
+    .setTitle(`⚔️ ${event.name}`)
     .addFields(
       {
         name: '👑 團長',
@@ -71,33 +69,38 @@ function buildEmbed(event) {
         inline: true
       },
       {
-        name: '📊 隊伍狀態',
-        value: bar(event.players.length, event.maxPlayers),
-        inline: false
-      },
-
-      {
-        name: `${ROLE.tank.icon} 坦克 (${tanks.length}/${event.maxTanks})`,
-        value: list(tanks, ROLE.tank.icon),
+        name: '📊 狀態',
+        value: status,
         inline: true
       },
       {
-        name: `${ROLE.healer.icon} 治療 (${healers.length}/${event.maxHealers})`,
-        value: list(healers, ROLE.healer.icon),
-        inline: true
-      },
-      {
-        name: `${ROLE.dps.icon} 輸出 (${dps.length})`,
-        value: list(dps, ROLE.dps.icon),
+        name: '👥 人數',
+        value: `${event.players.length} / ${event.maxPlayers}`,
         inline: true
       },
 
       {
-        name: '📥 候補隊列',
+        name: `🛡 坦 (${tanks.length}/${event.maxTanks})`,
+        value: list(tanks, '🛡️'),
+        inline: true
+      },
+      {
+        name: `💚 補 (${healers.length}/${event.maxHealers})`,
+        value: list(healers, '💚'),
+        inline: true
+      },
+      {
+        name: `⚔️ 輸出 (${dps.length})`,
+        value: list(dps, '⚔️'),
+        inline: true
+      },
+
+      {
+        name: '📥 候補',
         value: queue.length ? queue.map(q => `⏳ <@${q.id}>`).join('\n') : '—'
       }
     )
-    
+    .setFooter({ text: 'RPG Raid System • Discord Dungeon Party' });
 }
 
 // ==========================
