@@ -37,10 +37,6 @@ function safeDB(data) {
   return data;
 }
 
-function formatDate(date) {
-  if (!date) return '未設定';
-  return new Date(date).toLocaleDateString('zh-TW');
-}
 
 // ==========================
 // RPG STYLE EMBED (FIXED)
@@ -119,7 +115,7 @@ function buildEmbed(event) {
         value: queue.length ? queue.map(q => `⏳ <@${q.id}>`).join('\n') : '—'
       }
     )
-     
+    
 }
 
 // ==========================
