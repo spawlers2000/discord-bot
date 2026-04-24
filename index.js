@@ -21,13 +21,22 @@ const client = new Client({
 });
 
 // ==========================
-// UI（Embed）
+// DB safety
 // ==========================
-function buildEventEmbed(event) {
+function safeDB(data) {
+  if (!data.events) data.events = [];
+  return data;
+}
+
+// ==========================
+// UI
+// ==========================
+function buildEmbed(event) {
 
   const tanks = event.players.filter(p => p.role === 'tanks');
   const healers = event.players.filter(p => p.role === 'healers');
   const dps = event.players.filter(p => p.role === 'dps');
+  const queue = event.queue || [];
 
   const list = (arr, icon) =>
     arr.length ? arr.map(p => `${icon} <@${p.id}>`).join('\n') : '無';
@@ -36,38 +45,49 @@ function buildEventEmbed(event) {
     .setColor(0x5865F2)
     .setTitle(`📢 ${event.name}`)
     .addFields(
-      { name: '📅 活動時間', value: new Date(event.eventTime).toLocaleDateString('zh-TW'), inline: true },
-      { name: '👥 人數', value: `${event.players.length}/${event.maxPlayers}`, inline: true },
       { name: '👑 建立者', value: `<@${event.ownerId}>`, inline: true },
+      { name: '👥 人數', value: `${event.players.length}/${event.maxPlayers}`, inline: true },
+      { name: '⏳ 截止', value: new Date(event.endTime).toLocaleDateString('zh-TW'), inline: true },
 
       { name: `🛡 坦 (${tanks.length}/${event.maxTanks})`, value: list(tanks, '🛡'), inline: true },
       { name: `💚 補 (${healers.length}/${event.maxHealers})`, value: list(healers, '💚'), inline: true },
-      { name: `💥 輸出 (${dps.length}/${event.maxDps})`, value: list(dps, '💥'), inline: true },
 
-      { name: '⏳ 截止', value: new Date(event.endTime).toLocaleDateString('zh-TW') }
+      // 🔥 DPS 無上限（修正重點）
+      { name: `💥 輸出 (${dps.length})`, value: list(dps, '💥'), inline: true },
+
+      { name: '📥 候補', value: queue.length ? queue.map(q => `<@${q.id}>`).join('\n') : '無' }
     )
-    .setFooter({ text: '按鈕操作：報名 / 取消 / 刪除' });
+    .setFooter({ text: '按鈕操作：報名 / 取消 / 候補 / 刪除' });
 }
 
 // ==========================
 // Buttons
 // ==========================
-function buildButtons() {
+function buttons(event) {
+
+  const tanks = event.players.filter(p => p.role === 'tanks').length;
+  const healers = event.players.filter(p => p.role === 'healers').length;
+
   return new ActionRowBuilder().addComponents(
+
     new ButtonBuilder()
-      .setCustomId('join_tank')
+      .setCustomId('tank')
       .setLabel('🛡 坦')
-      .setStyle(ButtonStyle.Primary),
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(tanks >= event.maxTanks),
 
     new ButtonBuilder()
-      .setCustomId('join_healer')
+      .setCustomId('healer')
       .setLabel('💚 補')
-      .setStyle(ButtonStyle.Success),
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(healers >= event.maxHealers),
 
+    // 🔥 DPS 永遠可加入（無上限）
     new ButtonBuilder()
-      .setCustomId('join_dps')
+      .setCustomId('dps')
       .setLabel('💥 輸出')
-      .setStyle(ButtonStyle.Secondary),
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(false),
 
     new ButtonBuilder()
       .setCustomId('leave')
@@ -76,7 +96,10 @@ function buildButtons() {
   );
 }
 
-function buildOwnerButton(event) {
+// ==========================
+// Owner button
+// ==========================
+function ownerBtn(event) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`delete_${event.id}`)
@@ -93,7 +116,7 @@ client.once(Events.ClientReady, () => {
 });
 
 // ==========================
-// Slash Command（建立活動）
+// Interaction
 // ==========================
 client.on(Events.InteractionCreate, async (interaction) => {
 
@@ -105,34 +128,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         await interaction.deferReply();
 
-        const name = interaction.options.getString('name');
-        const max = interaction.options.getInteger('max');
-        const tanks = interaction.options.getInteger('tanks');
-        const healers = interaction.options.getInteger('healers');
-        const dps = interaction.options.getInteger('dps');
-
-        const endTimeStr = interaction.options.getString('end-time');
-        const eventTimeStr = interaction.options.getString('event-time');
-
-        const eventTime = new Date(eventTimeStr + 'T00:00:00');
-        const endTime = new Date(endTimeStr + 'T23:59:59');
+        let data = safeDB(await db.loadDB());
 
         const id = Date.now().toString();
 
-        let data = await db.loadDB();
-        if (!data.events) data.events = [];
-
         const event = {
           id,
-          name,
-          maxPlayers: max,
-          maxTanks: tanks,
-          maxHealers: healers,
-          maxDps: dps,
+          name: interaction.options.getString('name'),
+          maxPlayers: interaction.options.getInteger('max'),
+          maxTanks: interaction.options.getInteger('tanks'),
+          maxHealers: interaction.options.getInteger('healers'),
+          maxDps: 999999, // 🔥 DPS 無上限（保險）
           players: [],
-          endTime: endTime.toISOString(),
-          eventTime: eventTime.toISOString(),
+          queue: [],
           ownerId: interaction.user.id,
+          endTime: new Date(interaction.options.getString('end-time') + 'T23:59:59').toISOString(),
+          eventTime: new Date(interaction.options.getString('event-time') + 'T00:00:00').toISOString(),
           channelId: interaction.channelId,
           messageId: null
         };
@@ -141,11 +152,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await db.saveDB(data);
 
         const msg = await interaction.editReply({
-          embeds: [buildEventEmbed(event)],
-          components: [buildButtons(), buildOwnerButton(event)]
+          embeds: [buildEmbed(event)],
+          components: [buttons(event), ownerBtn(event)]
         });
 
-        let data2 = await db.loadDB();
+        let data2 = safeDB(await db.loadDB());
         const saved = data2.events.find(e => e.id === id);
         if (saved) saved.messageId = msg.id;
         await db.saveDB(data2);
@@ -153,39 +164,32 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     // ==========================
-    // Buttons Interaction
+    // Buttons
     // ==========================
     if (interaction.isButton()) {
 
-      let data = await db.loadDB();
-      if (!data.events) data.events = [];
+      let data = safeDB(await db.loadDB());
 
-      const event = data.events.find(e =>
-        e.id === interaction.message?.id ||
-        e.messageId === interaction.message?.id
-      );
+      const event = data.events.find(e => e.messageId === interaction.message.id);
+      if (!event) return;
 
-      // fallback search
-      const ev = data.events.find(e => e.messageId === interaction.message.id);
+      const uid = interaction.user.id;
 
-      const target = ev || event;
-      if (!target) return;
-
-      const userId = interaction.user.id;
+      // 過期
+      if (Date.now() > new Date(event.endTime).getTime()) {
+        return interaction.reply({ content: '⏳ 活動已結束', ephemeral: true });
+      }
 
       // ======================
-      // DELETE
+      // 刪除
       // ======================
       if (interaction.customId.startsWith('delete_')) {
 
-        if (userId !== target.ownerId) {
-          return interaction.reply({
-            content: '❌ 只有建立者可以刪除',
-            ephemeral: true
-          });
+        if (uid !== event.ownerId) {
+          return interaction.reply({ content: '❌ 只有建立者', ephemeral: true });
         }
 
-        data.events = data.events.filter(e => e.id !== target.id);
+        data.events = data.events.filter(e => e.id !== event.id);
         await db.saveDB(data);
 
         await interaction.message.delete().catch(() => {});
@@ -193,52 +197,63 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       // ======================
-      // LEAVE
+      // 取消
       // ======================
       if (interaction.customId === 'leave') {
 
-        target.players = target.players.filter(p => p.id !== userId);
+        event.players = event.players.filter(p => p.id !== uid);
+        event.queue = event.queue.filter(p => p.id !== uid);
+
         await db.saveDB(data);
 
         return interaction.update({
-          embeds: [buildEventEmbed(target)],
-          components: [buildButtons(), buildOwnerButton(target)]
+          embeds: [buildEmbed(event)],
+          components: [buttons(event), ownerBtn(event)]
         });
       }
 
       // ======================
-      // JOIN
+      // 加入
       // ======================
       let role = null;
-
-      if (interaction.customId === 'join_tank') role = 'tanks';
-      if (interaction.customId === 'join_healer') role = 'healers';
-      if (interaction.customId === 'join_dps') role = 'dps';
+      if (interaction.customId === 'tank') role = 'tanks';
+      if (interaction.customId === 'healer') role = 'healers';
+      if (interaction.customId === 'dps') role = 'dps';
 
       if (!role) return;
 
-      // remove old
-      target.players = target.players.filter(p => p.id !== userId);
+      // 移除舊
+      event.players = event.players.filter(p => p.id !== uid);
 
-      // limit check
-      const count = target.players.filter(p => p.role === role).length;
+      const count = event.players.filter(p => p.role === role).length;
+      const limit =
+        role === 'tanks' ? event.maxTanks :
+        role === 'healers' ? event.maxHealers :
+        Infinity; // 🔥 DPS 無上限
 
-      if (role === 'tanks' && count >= target.maxTanks)
-        return interaction.reply({ content: '❌ 坦已滿', ephemeral: true });
+      // 滿人 → 候補
+      if (count >= limit) {
 
-      if (role === 'healers' && count >= target.maxHealers)
-        return interaction.reply({ content: '❌ 補已滿', ephemeral: true });
+        if (!event.queue.find(q => q.id === uid)) {
+          event.queue.push({ id: uid, role });
+        }
 
-      if (role === 'dps' && count >= target.maxDps)
-        return interaction.reply({ content: '❌ 輸出已滿', ephemeral: true });
+        await db.saveDB(data);
 
-      target.players.push({ id: userId, role });
+        return interaction.reply({
+          content: '📥 已進入候補',
+          ephemeral: true
+        });
+      }
+
+      // 正常加入
+      event.players.push({ id: uid, role });
 
       await db.saveDB(data);
 
-      await interaction.update({
-        embeds: [buildEventEmbed(target)],
-        components: [buildButtons(), buildOwnerButton(target)]
+      return interaction.update({
+        embeds: [buildEmbed(event)],
+        components: [buttons(event), ownerBtn(event)]
       });
     }
 
