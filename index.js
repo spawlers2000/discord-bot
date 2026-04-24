@@ -81,7 +81,7 @@ function buildEmbed(event) {
       
       {
         name: '📅 活動開始',
-        value: event.startTime ? `${event.startTime}` : '未設定',
+        value: event.startTime ? `${event.eventTime}` : '未設定',
         inline: true
       },
       {
