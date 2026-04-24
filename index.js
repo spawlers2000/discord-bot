@@ -114,9 +114,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
             .setCustomId(`role_${id}`)
             .setPlaceholder('選擇職業')
             .addOptions(
-              { label: '坦克', value: 'tanks', emoji: '🛡' },
-              { label: '補師', value: 'healers', emoji: '💚' },
-              { label: '輸出', value: 'dps', emoji: '💥' },
+              { label: '無敵坦克', value: 'tanks', emoji: '🛡' },
+              { label: '威猛補師', value: 'healers', emoji: '💚' },
+              { label: '最強輸出', value: 'dps', emoji: '💥' },
               { label: '取消報名', value: 'leave', emoji: '❌' },
               { label: '刪除活動', value: 'del', emoji: '🗑️' }
             )
@@ -157,7 +157,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const userId = interaction.user.id;
 
       // ======================
-      // 🗑️ 刪除活動（最穩版本）
+      // 🗑️ 刪除活動
       // ======================
       if (role === 'del') {
 
