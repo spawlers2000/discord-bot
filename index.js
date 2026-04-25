@@ -38,6 +38,34 @@ function safeDB(data) {
 }
 
 // ==========================
+// ⏰ 時間解析（支援空格）
+// ==========================
+function parseTime(input) {
+  if (!input) return null;
+
+  input = input.replace(' ', 'T'); // 轉 ISO 格式
+  const date = new Date(input);
+
+  if (isNaN(date)) return null;
+
+  return date.toISOString();
+}
+
+// ==========================
+// ⏰ 顯示時間格式
+// ==========================
+function formatTime(time) {
+  return new Date(time).toLocaleString('zh-TW', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+}
+
+// ==========================
 // RPG STYLE EMBED
 // ==========================
 function buildEmbed(event) {
@@ -78,26 +106,23 @@ function buildEmbed(event) {
         value: `${event.players.length} / ${event.maxPlayers}`,
         inline: true
       },
-      
+
       {
-  name: '📅 活動開始',
-  value: event.eventTime
-    ? new Date(event.eventTime).toLocaleDateString('zh-TW')
-    : '未設定',
-  inline: true
-},
-{
-  name: '⏳ 報名截止',
-  value: event.endTime
-    ? new Date(event.endTime).toLocaleDateString('zh-TW')
-    : '未設定',
-  inline: true
-},
-{
-  name: '\u200b',
-  value: '\u200b',
-  inline: true
-},
+        name: '📅 活動開始',
+        value: event.eventTime ? formatTime(event.eventTime) : '未設定',
+        inline: true
+      },
+      {
+        name: '⏳ 報名截止',
+        value: event.endTime ? formatTime(event.endTime) : '未設定',
+        inline: true
+      },
+      {
+        name: '\u200b',
+        value: '\u200b',
+        inline: true
+      },
+
       {
         name: `🛡 坦 (${tanks.length}/${event.maxTanks})`,
         value: list(tanks, '🛡️'),
@@ -118,8 +143,7 @@ function buildEmbed(event) {
         name: '📥 候補',
         value: queue.length ? queue.map(q => `⏳ <@${q.id}>`).join('\n') : '—'
       }
-    )
-    
+    );
 }
 
 // ==========================
@@ -147,8 +171,7 @@ function buttons(event) {
     new ButtonBuilder()
       .setCustomId('dps')
       .setLabel(`${ROLE.dps.icon} 輸出`)
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(false),
+      .setStyle(ButtonStyle.Secondary),
 
     new ButtonBuilder()
       .setCustomId('leave')
@@ -193,6 +216,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const id = Date.now().toString();
 
+        const eventTimeInput = interaction.options.getString('event-time');
+        const endTimeInput = interaction.options.getString('end-time');
+
+        const eventTime = parseTime(eventTimeInput);
+        const endTime = parseTime(endTimeInput);
+
+        if (!eventTime || !endTime) {
+          return interaction.editReply({
+            content: '❌ 時間格式錯誤，請用：2026-04-30 20:30'
+          });
+        }
+
         const event = {
           id,
           name: interaction.options.getString('name'),
@@ -203,8 +238,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           players: [],
           queue: [],
           ownerId: interaction.user.id,
-          endTime: new Date(interaction.options.getString('end-time') ).toISOString(),
-          eventTime: new Date(interaction.options.getString('event-time') ).toISOString(),
+          endTime,
+          eventTime,
           messageId: null
         };
 
