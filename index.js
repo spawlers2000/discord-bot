@@ -21,52 +21,44 @@ const client = new Client({
 });
 
 // ==========================
-// 🎮 ROLE
+// normalize
 // ==========================
-const ROLE = {
-  tank: { icon: '🛡️' },
-  healer: { icon: '💚' },
-  dps: { icon: '⚔️' }
-};
+function normalize(e) {
+  if (!e) return e;
+
+  return {
+    ...e,
+    eventTime: Number(e.eventTime),
+    endTime: Number(e.endTime),
+    players: e.players || [],
+    queue: e.queue || []
+  };
+}
 
 // ==========================
-// DB safe（🔥已修：強制轉數字）
+// DB safe
 // ==========================
 function safeDB(data) {
   if (!data.events) data.events = [];
-
-  data.events = data.events.map(e => ({
-    ...e,
-    eventTime: Number(e.eventTime),
-    endTime: Number(e.endTime)
-  }));
-
+  data.events = data.events.map(normalize);
   return data;
 }
 
 // ==========================
-// ⏰ 時間解析
+// time parse
 // ==========================
 function parseTime(input) {
-  if (!input) return null;
-
   const [date, time] = input.split(' ');
-  if (!date || !time) return null;
-
   const [y, m, d] = date.split('-').map(Number);
   const [h, min] = time.split(':').map(Number);
-
-  const dateObj = new Date(y, m - 1, d, h, min);
-  if (isNaN(dateObj)) return null;
-
-  return dateObj.getTime();
+  return new Date(y, m - 1, d, h, min).getTime();
 }
 
 // ==========================
-// ⏰ 顯示時間
+// format
 // ==========================
-function formatTime(time) {
-  return new Date(Number(time)).toLocaleString('zh-TW', {
+function formatTime(t) {
+  return new Date(Number(t)).toLocaleString('zh-TW', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -77,48 +69,35 @@ function formatTime(time) {
 }
 
 // ==========================
-// EMBED
+// embed
 // ==========================
 function buildEmbed(event) {
 
-  const tanks = event.players.filter(p => p.role === 'tanks');
-  const healers = event.players.filter(p => p.role === 'healers');
-  const dps = event.players.filter(p => p.role === 'dps');
-  const queue = event.queue || [];
-
-  const list = (arr, icon) =>
-    arr.length ? arr.map(p => `${icon} <@${p.id}>`).join('\n') : '—';
+  event = normalize(event);
 
   const now = Date.now();
 
+  const players = event.players;
+  const queue = event.queue;
+
   const status =
-    event.players.length >= event.maxPlayers ? '🔴 已滿'
+    players.length >= event.maxPlayers ? '🔴 已滿'
     : now >= event.endTime ? '⛔ 已截止'
     : now >= event.eventTime ? '⏰ 已開始'
     : '🟢 招募中';
 
   return new EmbedBuilder()
-    .setColor(event.players.length >= event.maxPlayers ? 0xe74c3c : 0x2ecc71)
     .setTitle(`⚔️ ${event.name}`)
+    .setColor(0x2ecc71)
     .addFields(
-      { name: '👑 團長', value: `<@${event.ownerId}>`, inline: true },
       { name: '📊 狀態', value: status, inline: true },
-      { name: '👥 人數', value: `${event.players.length}/${event.maxPlayers}`, inline: true },
-
-      { name: '📅 活動開始', value: formatTime(event.eventTime), inline: true },
-      { name: '⏳ 報名截止', value: formatTime(event.endTime), inline: true },
-      { name: '\u200b', value: '\u200b', inline: true },
-
-      { name: `🛡 坦`, value: list(tanks, '🛡️'), inline: true },
-      { name: `💚 補`, value: list(healers, '💚'), inline: true },
-      { name: `⚔️ 輸出`, value: list(dps, '⚔️'), inline: true },
-
-      { name: '📥 候補', value: queue.length ? queue.map(q => `<@${q.id}>`).join('\n') : '—' }
+      { name: '👥 人數', value: `${players.length}/${event.maxPlayers}`, inline: true },
+      { name: '⏳ 截止', value: formatTime(event.endTime), inline: true }
     );
 }
 
 // ==========================
-// BUTTONS
+// buttons
 // ==========================
 function buttons() {
   return new ActionRowBuilder().addComponents(
@@ -133,7 +112,7 @@ function ownerBtn(event) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`delete_${event.id}`)
-      .setLabel('🗑️解散隊伍')
+      .setLabel('🗑️解散')
       .setStyle(ButtonStyle.Danger)
   );
 }
@@ -152,32 +131,27 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   try {
 
-    const data = safeDB(await db.loadDB());
+    // ==========================
+    // ALWAYS reload DB (🔥關鍵修正)
+    // ==========================
+    let data = safeDB(await db.loadDB());
     const now = Date.now();
 
     // ==========================
-    // 建立活動
+    // CREATE
     // ==========================
     if (interaction.isChatInputCommand() && interaction.commandName === 'event') {
 
       await interaction.deferReply();
 
-      const id = Date.now().toString();
-
       const eventTime = parseTime(interaction.options.getString('event-time'));
       const endTime = parseTime(interaction.options.getString('end-time'));
 
       if (!eventTime || !endTime)
-        return interaction.editReply({ content: '❌ 時間格式錯誤（2026-04-30 20:30）' });
+        return interaction.editReply('❌ 時間錯誤');
 
-      if (eventTime < now)
-        return interaction.editReply({ content: '❌ 活動不能是過去時間' });
-
-      if (endTime > eventTime)
-        return interaction.editReply({ content: '❌ 報名截止不能晚於開始時間' });
-
-      const event = {
-        id,
+      const event = normalize({
+        id: Date.now().toString(),
         name: interaction.options.getString('name'),
         maxPlayers: interaction.options.getInteger('max'),
         maxTanks: interaction.options.getInteger('tanks'),
@@ -188,7 +162,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         eventTime,
         endTime,
         messageId: null
-      };
+      });
 
       data.events.push(event);
       await db.saveDB(data);
@@ -198,9 +172,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         components: [buttons(), ownerBtn(event)]
       });
 
-      const saved = data.events.find(e => e.id === id);
-      if (saved) saved.messageId = msg.id;
-
+      event.messageId = msg.id;
       await db.saveDB(data);
     }
 
@@ -209,13 +181,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
     // ==========================
     if (!interaction.isButton()) return;
 
-    const event = data.events.find(e => e.messageId === interaction.message.id);
+    // 🔥 重抓最新資料（關鍵）
+    data = safeDB(await db.loadDB());
+
+    let event = data.events.find(e => e.messageId === interaction.message.id);
     if (!event) return;
 
+    event = normalize(event);
+
     const uid = interaction.user.id;
+    const now2 = Date.now();
 
     // ==========================
-    // 解散
+    // DELETE
     // ==========================
     if (interaction.customId.startsWith('delete_')) {
       if (uid !== event.ownerId)
@@ -229,10 +207,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     // ==========================
-    // 離隊
+    // LEAVE
     // ==========================
     if (interaction.customId === 'leave') {
-
       event.players = event.players.filter(p => p.id !== uid);
       event.queue = event.queue.filter(p => p.id !== uid);
 
@@ -245,25 +222,27 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     // ==========================
-    // ⛔ 已開始
+    // 🔥 最終截止判斷（強制 number）
     // ==========================
-    if (now >= event.eventTime)
-      return interaction.reply({ content: '⏰ 活動已開始', ephemeral: true });
+    const end = Number(event.endTime);
+    const start = Number(event.eventTime);
+
+    // 🔥 DEBUG（如果還壞，看這行）
+    console.log('[DEBUG]', {
+      now: now2,
+      end,
+      start,
+      type: typeof event.endTime
+    });
+
+    if (now2 >= start)
+      return interaction.reply({ content: '⏰ 已開始', ephemeral: true });
+
+    if (now2 >= end)
+      return interaction.reply({ content: '🚫 已截止', ephemeral: true });
 
     // ==========================
-    // 🚫 已截止（🔥核心修正）
-    // ==========================
-    const endTime = Number(event.endTime);
-
-if (now >= endTime) {
-  return interaction.reply({
-    content: '🚫 報名已截止',
-    ephemeral: true
-  });
-}
-
-    // ==========================
-    // 報名
+    // ROLE
     // ==========================
     let role = null;
     if (interaction.customId === 'tank') role = 'tanks';
@@ -273,21 +252,6 @@ if (now >= endTime) {
     if (!role) return;
 
     event.players = event.players.filter(p => p.id !== uid);
-
-    const count = event.players.filter(p => p.role === role).length;
-    const limit =
-      role === 'tanks' ? event.maxTanks :
-      role === 'healers' ? event.maxHealers :
-      Infinity;
-
-    if (count >= limit) {
-      if (!event.queue.find(q => q.id === uid))
-        event.queue.push({ id: uid, role });
-
-      await db.saveDB(data);
-      return interaction.reply({ content: '📥 候補', ephemeral: true });
-    }
-
     event.players.push({ id: uid, role });
 
     await db.saveDB(data);
