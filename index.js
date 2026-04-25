@@ -21,11 +21,10 @@ const client = new Client({
 });
 
 // ==========================
-// normalize
+// normalize（防 DB 髒資料）
 // ==========================
 function normalize(e) {
   if (!e) return e;
-
   return {
     ...e,
     eventTime: Number(e.eventTime),
@@ -55,7 +54,7 @@ function parseTime(input) {
 }
 
 // ==========================
-// format
+// time format
 // ==========================
 function formatTime(t) {
   return new Date(Number(t)).toLocaleString('zh-TW', {
@@ -69,7 +68,7 @@ function formatTime(t) {
 }
 
 // ==========================
-// embed
+// embed（完整 UI）
 // ==========================
 function buildEmbed(event) {
 
@@ -101,8 +100,8 @@ function buildEmbed(event) {
       { name: '📊 狀態', value: status, inline: true },
       { name: '👥 人數', value: `${players.length}/${event.maxPlayers}`, inline: true },
 
-      { name: '📅 開始時間', value: formatTime(event.eventTime), inline: true },
-      { name: '⏳ 截止時間', value: formatTime(event.endTime), inline: true },
+      { name: '📅 開始', value: formatTime(event.eventTime), inline: true },
+      { name: '⏳ 截止', value: formatTime(event.endTime), inline: true },
       { name: '\u200b', value: '\u200b', inline: true },
 
       { name: `🛡 坦 (${tanks.length})`, value: list(tanks, '🛡️'), inline: true },
@@ -149,23 +148,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
   try {
 
     // ==========================
-    // ALWAYS reload DB (🔥關鍵修正)
-    // ==========================
-    let data = safeDB(await db.loadDB());
-    const now = Date.now();
-
-    // ==========================
-    // CREATE
+    // CREATE EVENT
     // ==========================
     if (interaction.isChatInputCommand() && interaction.commandName === 'event') {
 
       await interaction.deferReply();
 
-      const eventTime = parseTime(interaction.options.getString('event-time'));
-      const endTime = parseTime(interaction.options.getString('end-time'));
-
-      if (!eventTime || !endTime)
-        return interaction.editReply('❌ 時間錯誤');
+      let data = safeDB(await db.loadDB());
 
       const event = normalize({
         id: Date.now().toString(),
@@ -176,8 +165,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         players: [],
         queue: [],
         ownerId: interaction.user.id,
-        eventTime,
-        endTime,
+        eventTime: parseTime(interaction.options.getString('event-time')),
+        endTime: parseTime(interaction.options.getString('end-time')),
         messageId: null
       });
 
@@ -194,12 +183,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     // ==========================
-    // BUTTON
+    // BUTTONS
     // ==========================
     if (!interaction.isButton()) return;
 
-    // 🔥 重抓最新資料（關鍵）
-    data = safeDB(await db.loadDB());
+    // 🔥 每次都 reload DB（關鍵）
+    let data = safeDB(await db.loadDB());
 
     let event = data.events.find(e => e.messageId === interaction.message.id);
     if (!event) return;
@@ -207,7 +196,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
     event = normalize(event);
 
     const uid = interaction.user.id;
-    const now2 = Date.now();
+    const now = Date.now();
+
+    const end = Number(event.endTime);
+    const start = Number(event.eventTime);
+
+    // ==========================
+    // 🔥 最重要：截止判斷（一定放最上面）
+    // ==========================
+    if (now >= end)
+      return interaction.reply({ content: '🚫 已截止', ephemeral: true });
+
+    if (now >= start)
+      return interaction.reply({ content: '⏰ 已開始', ephemeral: true });
 
     // ==========================
     // DELETE
@@ -227,6 +228,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     // LEAVE
     // ==========================
     if (interaction.customId === 'leave') {
+
       event.players = event.players.filter(p => p.id !== uid);
       event.queue = event.queue.filter(p => p.id !== uid);
 
@@ -237,26 +239,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         components: [buttons(), ownerBtn(event)]
       });
     }
-
-    // ==========================
-    // 🔥 最終截止判斷（強制 number）
-    // ==========================
-    const end = Number(event.endTime);
-    const start = Number(event.eventTime);
-
-    // 🔥 DEBUG（如果還壞，看這行）
-    console.log('[DEBUG]', {
-      now: now2,
-      end,
-      start,
-      type: typeof event.endTime
-    });
-
-    if (now2 >= start)
-      return interaction.reply({ content: '⏰ 已開始', ephemeral: true });
-
-    if (now2 >= end)
-      return interaction.reply({ content: '🚫 已截止', ephemeral: true });
 
     // ==========================
     // ROLE
