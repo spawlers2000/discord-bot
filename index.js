@@ -208,7 +208,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 console.log('start date:', new Date(Number(event.eventTime)).toISOString());
 console.log('now:', new Date().toISOString());
 
-    if (now >= end)
+    if (now > Number(event.endTime))
       return interaction.reply({ content: '🚫 已截止', ephemeral: true });
 
     if (now >= start)
