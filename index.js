@@ -30,7 +30,7 @@ const ROLE = {
 };
 
 // ==========================
-// 🔥 強制時間轉型工具（核心）
+// 🔥 強制資料乾淨化（核心）
 // ==========================
 function normalizeEvent(e) {
   if (!e) return e;
@@ -38,7 +38,9 @@ function normalizeEvent(e) {
   return {
     ...e,
     eventTime: Number(e.eventTime),
-    endTime: Number(e.endTime)
+    endTime: Number(e.endTime),
+    players: e.players || [],
+    queue: e.queue || []
   };
 }
 
@@ -52,18 +54,17 @@ function safeDB(data) {
 }
 
 // ==========================
-// parse time
+// 時間解析
 // ==========================
 function parseTime(input) {
   const [date, time] = input.split(' ');
   const [y, m, d] = date.split('-').map(Number);
   const [h, min] = time.split(':').map(Number);
-
   return new Date(y, m - 1, d, h, min).getTime();
 }
 
 // ==========================
-// format
+// 時間顯示
 // ==========================
 function formatTime(t) {
   return new Date(Number(t)).toLocaleString('zh-TW', {
@@ -77,7 +78,7 @@ function formatTime(t) {
 }
 
 // ==========================
-// EMBED
+// EMBED（安全版）
 // ==========================
 function buildEmbed(event) {
 
@@ -85,26 +86,38 @@ function buildEmbed(event) {
 
   const now = Date.now();
 
-  const tanks = event.players.filter(p => p.role === 'tanks');
-  const healers = event.players.filter(p => p.role === 'healers');
-  const dps = event.players.filter(p => p.role === 'dps');
+  const players = event.players;
+  const queue = event.queue;
+
+  const tanks = players.filter(p => p.role === 'tanks');
+  const healers = players.filter(p => p.role === 'healers');
+  const dps = players.filter(p => p.role === 'dps');
+
+  const list = (arr, icon) =>
+    arr.length ? arr.map(p => `${icon} <@${p.id}>`).join('\n') : '—';
 
   const status =
-    event.players.length >= event.maxPlayers ? '🔴 已滿'
+    players.length >= event.maxPlayers ? '🔴 已滿'
     : now >= event.endTime ? '⛔ 已截止'
     : now >= event.eventTime ? '⏰ 已開始'
     : '🟢 招募中';
 
   return new EmbedBuilder()
-    .setTitle(`⚔️ ${event.name}`)
     .setColor(0x2ecc71)
+    .setTitle(`⚔️ ${event.name}`)
     .addFields(
       { name: '👑 團長', value: `<@${event.ownerId}>`, inline: true },
       { name: '📊 狀態', value: status, inline: true },
-      { name: '👥 人數', value: `${event.players.length}/${event.maxPlayers}`, inline: true },
+      { name: '👥 人數', value: `${players.length}/${event.maxPlayers}`, inline: true },
 
       { name: '📅 開始', value: formatTime(event.eventTime), inline: true },
       { name: '⏳ 截止', value: formatTime(event.endTime), inline: true },
+
+      { name: '🛡 坦', value: list(tanks, '🛡️'), inline: true },
+      { name: '💚 補', value: list(healers, '💚'), inline: true },
+      { name: '⚔️ 輸出', value: list(dps, '⚔️'), inline: true },
+
+      { name: '📥 候補', value: queue.length ? queue.map(q => `<@${q.id}>`).join('\n') : '—' }
     );
 }
 
@@ -124,7 +137,7 @@ function ownerBtn(event) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`delete_${event.id}`)
-      .setLabel('🗑️解散隊伍')
+      .setLabel('🗑️解散')
       .setStyle(ButtonStyle.Danger)
   );
 }
@@ -144,6 +157,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   try {
 
     const data = safeDB(await db.loadDB());
+    const now = Date.now();
 
     // ==========================
     // CREATE EVENT
@@ -199,7 +213,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     event = normalizeEvent(event);
 
-    const now = Date.now();
     const uid = interaction.user.id;
 
     // ==========================
@@ -220,6 +233,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     // LEAVE
     // ==========================
     if (interaction.customId === 'leave') {
+
       event.players = event.players.filter(p => p.id !== uid);
       event.queue = event.queue.filter(p => p.id !== uid);
 
@@ -232,7 +246,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     // ==========================
-    // 🔥 終極截止判斷（100%有效）
+    // 🔥 終極時間防呆（100%有效）
     // ==========================
     const endTime = Number(event.endTime);
     const startTime = Number(event.eventTime);
@@ -253,6 +267,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     if (!role) return;
 
+    // 移除舊角色
     event.players = event.players.filter(p => p.id !== uid);
 
     event.players.push({ id: uid, role });
