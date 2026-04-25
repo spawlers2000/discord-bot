@@ -313,23 +313,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // 已經開始
-      if (now >= eventTime) {
-        return interaction.reply({
-          content: '⏰ 活動已開始，無法操作',
-          ephemeral: true
-        });
-      }
+   
 
       //  超過報名截止
-      if (now > endTime) {
-        return interaction.reply({
-          content: '🚫 報名已截止',
-          ephemeral: true
-        });
-      
-      }
       if (Date.now() > new Date(event.endTime).getTime()) {
+        return interaction.reply({ content: '🚫 報名已截止', ephemeral: true });
+      }
+
+      if (Date.now() > new Date(event.eventTime).getTime()) {
         return interaction.reply({ content: '⏳ 副本已結束', ephemeral: true });
       }
 
