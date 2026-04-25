@@ -368,7 +368,7 @@ client.once(Events.ClientReady, () => {
 
         const channel = await client.channels.fetch("1439790753940242483");
 
-        await channel.send("<@&1451525866231169147> ⏰ 活動即將開始！");
+        await channel.send("<@&1451525866231169147> ⏰ 提醒：~百業戰~即將開始！請準備集合！");
       }
 
     } catch (err) {
