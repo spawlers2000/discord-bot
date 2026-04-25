@@ -13,7 +13,7 @@ const commands = [
 
         .addStringOption(o =>
       o.setName('event-time')
-        .setDescription('活動開始時間(格式：2026-04-25)')
+        .setDescription('活動開始時間(格式：2026-04-25 00:00)')
         .setRequired(true))
 
     .addIntegerOption(o =>
@@ -33,7 +33,7 @@ const commands = [
 
     .addStringOption(o =>
       o.setName('end-time')  // 新增一個結束時間選項
-          .setDescription('報名結束時間(格式：2026-04-25)')
+          .setDescription('報名結束時間(格式：2026-04-25 00:00)')
           .setRequired(true)) //  
       
 ].map(c => c.toJSON());

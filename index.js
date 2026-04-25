@@ -228,6 +228,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
         }
 
+        if (new Date(eventTime).getTime() < Date.now()) {
+          return interaction.editReply({
+           content: '❌ 活動時間不能是過去時間'
+          });
+        }
+
+        // ⛔ 報名截止不能晚於活動開始（但可以等於）
+        if (new Date(endTime).getTime() > new Date(eventTime).getTime()) {
+          return interaction.editReply({
+           content: '❌ 報名截止時間不能晚於活動開始時間'
+          });
+       }
+
         const event = {
           id,
           name: interaction.options.getString('name'),
@@ -303,7 +316,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (Date.now() > new Date(event.endTime).getTime()) {
         return interaction.reply({ content: '⏳ 副本已結束', ephemeral: true });
       }
-      
+
       // ROLE JOIN
       let role = null;
 
