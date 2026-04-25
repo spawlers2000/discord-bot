@@ -80,13 +80,20 @@ function buildEmbed(event) {
   const players = event.players;
   const queue = event.queue;
 
+  const tanks = players.filter(p => p.role === 'tanks');
+  const healers = players.filter(p => p.role === 'healers');
+  const dps = players.filter(p => p.role === 'dps');
+
+  const list = (arr, icon) =>
+    arr.length ? arr.map(p => `${icon} <@${p.id}>`).join('\n') : '—';
+
   const status =
     players.length >= event.maxPlayers ? '🔴 已滿'
     : now >= event.endTime ? '⛔ 已截止'
     : now >= event.eventTime ? '⏰ 已開始'
     : '🟢 招募中';
 
-   return new EmbedBuilder()
+  return new EmbedBuilder()
     .setColor(0x2ecc71)
     .setTitle(`⚔️ ${event.name}`)
     .addFields(
@@ -94,12 +101,13 @@ function buildEmbed(event) {
       { name: '📊 狀態', value: status, inline: true },
       { name: '👥 人數', value: `${players.length}/${event.maxPlayers}`, inline: true },
 
-      { name: '📅 開始', value: formatTime(event.eventTime), inline: true },
-      { name: '⏳ 截止', value: formatTime(event.endTime), inline: true },
+      { name: '📅 開始時間', value: formatTime(event.eventTime), inline: true },
+      { name: '⏳ 截止時間', value: formatTime(event.endTime), inline: true },
+      { name: '\u200b', value: '\u200b', inline: true },
 
-      { name: '🛡 坦', value: list(tanks, '🛡️'), inline: true },
-      { name: '💚 補', value: list(healers, '💚'), inline: true },
-      { name: '⚔️ 輸出', value: list(dps, '⚔️'), inline: true },
+      { name: `🛡 坦 (${tanks.length})`, value: list(tanks, '🛡️'), inline: true },
+      { name: `💚 補 (${healers.length})`, value: list(healers, '💚'), inline: true },
+      { name: `⚔ 輸出 (${dps.length})`, value: list(dps, '⚔️'), inline: true },
 
       { name: '📥 候補', value: queue.length ? queue.map(q => `<@${q.id}>`).join('\n') : '—' }
     );
