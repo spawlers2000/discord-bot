@@ -204,6 +204,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     // ==========================
     // 🔥 最重要：截止判斷（一定放最上面）
     // ==========================
+    console.log('end:', new Date().toISOString());
+    console.log('start:', new Date().toISOString());
+    console.log('now:', new Date().toISOString());
+
     if (now >= end)
       return interaction.reply({ content: '🚫 已截止', ephemeral: true });
 
