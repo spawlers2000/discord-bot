@@ -270,9 +270,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       const uid = interaction.user.id;
 
-      if (Date.now() > new Date(event.endTime).getTime()) {
-        return interaction.reply({ content: '⏳ 副本已結束', ephemeral: true });
-      }
+      
 
       // DELETE
       if (interaction.customId.startsWith('delete_')) {
@@ -302,6 +300,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      if (Date.now() > new Date(event.endTime).getTime()) {
+        return interaction.reply({ content: '⏳ 副本已結束', ephemeral: true });
+      }
+      
       // ROLE JOIN
       let role = null;
 
