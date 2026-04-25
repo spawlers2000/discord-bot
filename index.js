@@ -285,7 +285,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       
 
-      // DELETE
+      // 解散
       if (interaction.customId.startsWith('delete_')) {
 
         if (uid !== event.ownerId) {
@@ -299,7 +299,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      // LEAVE
+      // 離隊
       if (interaction.customId === 'leave') {
 
         event.players = event.players.filter(p => p.id !== uid);
@@ -313,6 +313,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      // 已經開始
+      if (now >= eventTime) {
+        return interaction.reply({
+          content: '⏰ 活動已開始，無法操作',
+          ephemeral: true
+        });
+      }
+
+      //  超過報名截止
+      if (now > endTime) {
+        return interaction.reply({
+          content: '🚫 報名已截止',
+          ephemeral: true
+        });
+      
+      }
       if (Date.now() > new Date(event.endTime).getTime()) {
         return interaction.reply({ content: '⏳ 副本已結束', ephemeral: true });
       }
