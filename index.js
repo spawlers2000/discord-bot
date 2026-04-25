@@ -21,19 +21,26 @@ const client = new Client({
 });
 
 // ==========================
-// 🎮 RPG ICON SYSTEM
+// 🎮 ROLE
 // ==========================
 const ROLE = {
-  tank: { icon: '🛡️', name: '坦克', color: 0x3498db },
-  healer: { icon: '💚', name: '治療', color: 0x2ecc71 },
-  dps: { icon: '⚔️', name: '輸出', color: 0xe74c3c }
+  tank: { icon: '🛡️' },
+  healer: { icon: '💚' },
+  dps: { icon: '⚔️' }
 };
 
 // ==========================
-// DB safe
+// DB safe（🔥已修：強制轉數字）
 // ==========================
 function safeDB(data) {
   if (!data.events) data.events = [];
+
+  data.events = data.events.map(e => ({
+    ...e,
+    eventTime: Number(e.eventTime),
+    endTime: Number(e.endTime)
+  }));
+
   return data;
 }
 
@@ -42,17 +49,24 @@ function safeDB(data) {
 // ==========================
 function parseTime(input) {
   if (!input) return null;
-  input = input.replace(' ', 'T');
-  const date = new Date(input);
-  if (isNaN(date)) return null;
-  return date.toISOString();
+
+  const [date, time] = input.split(' ');
+  if (!date || !time) return null;
+
+  const [y, m, d] = date.split('-').map(Number);
+  const [h, min] = time.split(':').map(Number);
+
+  const dateObj = new Date(y, m - 1, d, h, min);
+  if (isNaN(dateObj)) return null;
+
+  return dateObj.getTime();
 }
 
 // ==========================
 // ⏰ 顯示時間
 // ==========================
 function formatTime(time) {
-  return new Date(time).toLocaleString('zh-TW', {
+  return new Date(Number(time)).toLocaleString('zh-TW', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -60,18 +74,6 @@ function formatTime(time) {
     minute: '2-digit',
     hour12: false
   });
-}
-
-// ==========================
-// ❗ 統一錯誤回應（避免 failed）
-// ==========================
-async function replyError(interaction, msg) {
-  if (interaction.deferred || interaction.replied) {
-    return interaction.followUp({ content: msg, ephemeral: true });
-  } else {
-    await interaction.deferReply({ ephemeral: true });
-    return interaction.editReply({ content: msg });
-  }
 }
 
 // ==========================
@@ -87,201 +89,207 @@ function buildEmbed(event) {
   const list = (arr, icon) =>
     arr.length ? arr.map(p => `${icon} <@${p.id}>`).join('\n') : '—';
 
+  const now = Date.now();
+
   const status =
     event.players.length >= event.maxPlayers ? '🔴 已滿'
-    : event.players.length >= event.maxPlayers * 0.7 ? '🟡 即將滿'
+    : now >= event.endTime ? '⛔ 已截止'
+    : now >= event.eventTime ? '⏰ 已開始'
     : '🟢 招募中';
 
   return new EmbedBuilder()
-    .setColor(
-      event.players.length >= event.maxPlayers ? 0xe74c3c :
-      event.players.length >= event.maxPlayers * 0.7 ? 0xf1c40f :
-      0x2ecc71
-    )
+    .setColor(event.players.length >= event.maxPlayers ? 0xe74c3c : 0x2ecc71)
     .setTitle(`⚔️ ${event.name}`)
     .addFields(
       { name: '👑 團長', value: `<@${event.ownerId}>`, inline: true },
       { name: '📊 狀態', value: status, inline: true },
-      { name: '👥 人數', value: `${event.players.length} / ${event.maxPlayers}`, inline: true },
+      { name: '👥 人數', value: `${event.players.length}/${event.maxPlayers}`, inline: true },
 
       { name: '📅 活動開始', value: formatTime(event.eventTime), inline: true },
       { name: '⏳ 報名截止', value: formatTime(event.endTime), inline: true },
       { name: '\u200b', value: '\u200b', inline: true },
 
-      { name: `🛡 坦 (${tanks.length}/${event.maxTanks})`, value: list(tanks, '🛡️'), inline: true },
-      { name: `💚 補 (${healers.length}/${event.maxHealers})`, value: list(healers, '💚'), inline: true },
-      { name: `⚔️ 輸出 (${dps.length})`, value: list(dps, '⚔️'), inline: true },
+      { name: `🛡 坦`, value: list(tanks, '🛡️'), inline: true },
+      { name: `💚 補`, value: list(healers, '💚'), inline: true },
+      { name: `⚔️ 輸出`, value: list(dps, '⚔️'), inline: true },
 
-      { name: '📥 候補', value: queue.length ? queue.map(q => `⏳ <@${q.id}>`).join('\n') : '—' }
+      { name: '📥 候補', value: queue.length ? queue.map(q => `<@${q.id}>`).join('\n') : '—' }
     );
 }
 
 // ==========================
-// BUTTON UI
+// BUTTONS
 // ==========================
-function buttons(event) {
-
-  const tanks = event.players.filter(p => p.role === 'tanks').length;
-  const healers = event.players.filter(p => p.role === 'healers').length;
-
+function buttons() {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('tank').setLabel('🛡️ 坦').setStyle(ButtonStyle.Primary).setDisabled(tanks >= event.maxTanks),
-    new ButtonBuilder().setCustomId('healer').setLabel('💚 補').setStyle(ButtonStyle.Success).setDisabled(healers >= event.maxHealers),
-    new ButtonBuilder().setCustomId('dps').setLabel('⚔️ 輸出').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('leave').setLabel('❌ 離隊').setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId('tank').setLabel('🛡️坦').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('healer').setLabel('💚補').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('dps').setLabel('⚔️輸出').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('leave').setLabel('❌離隊').setStyle(ButtonStyle.Danger)
   );
 }
 
-// ==========================
 function ownerBtn(event) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`delete_${event.id}`)
-      .setLabel('🗑️ 解散隊伍')
+      .setLabel('🗑️解散隊伍')
       .setStyle(ButtonStyle.Danger)
   );
 }
 
 // ==========================
+// READY
+// ==========================
 client.once(Events.ClientReady, () => {
-  console.log("⚔️ RPG Raid Bot Ready");
+  console.log('⚔️ Bot Ready');
 });
 
+// ==========================
+// INTERACTION
 // ==========================
 client.on(Events.InteractionCreate, async (interaction) => {
 
   try {
 
+    const data = safeDB(await db.loadDB());
+    const now = Date.now();
+
     // ==========================
     // 建立活動
     // ==========================
-    if (interaction.isChatInputCommand()) {
+    if (interaction.isChatInputCommand() && interaction.commandName === 'event') {
 
-      if (interaction.commandName === 'event') {
+      await interaction.deferReply();
 
-        await interaction.deferReply();
+      const id = Date.now().toString();
 
-        let data = safeDB(await db.loadDB());
+      const eventTime = parseTime(interaction.options.getString('event-time'));
+      const endTime = parseTime(interaction.options.getString('end-time'));
 
-        const id = Date.now().toString();
+      if (!eventTime || !endTime)
+        return interaction.editReply({ content: '❌ 時間格式錯誤（2026-04-30 20:30）' });
 
-        const eventTime = parseTime(interaction.options.getString('event-time'));
-        const endTime = parseTime(interaction.options.getString('end-time'));
+      if (eventTime < now)
+        return interaction.editReply({ content: '❌ 活動不能是過去時間' });
 
-        if (!eventTime || !endTime)
-          return interaction.editReply({ content: '❌ 時間格式錯誤（例：2026-04-30 20:30）' });
+      if (endTime > eventTime)
+        return interaction.editReply({ content: '❌ 報名截止不能晚於開始時間' });
 
-        if (new Date(eventTime) < Date.now())
-          return interaction.editReply({ content: '❌ 活動時間不能是過去時間' });
+      const event = {
+        id,
+        name: interaction.options.getString('name'),
+        maxPlayers: interaction.options.getInteger('max'),
+        maxTanks: interaction.options.getInteger('tanks'),
+        maxHealers: interaction.options.getInteger('healers'),
+        players: [],
+        queue: [],
+        ownerId: interaction.user.id,
+        eventTime,
+        endTime,
+        messageId: null
+      };
 
-        if (new Date(endTime) > new Date(eventTime))
-          return interaction.editReply({ content: '❌ 報名截止不能晚於活動開始' });
+      data.events.push(event);
+      await db.saveDB(data);
 
-        const event = {
-          id,
-          name: interaction.options.getString('name'),
-          maxPlayers: interaction.options.getInteger('max'),
-          maxTanks: interaction.options.getInteger('tanks'),
-          maxHealers: interaction.options.getInteger('healers'),
-          players: [],
-          queue: [],
-          ownerId: interaction.user.id,
-          endTime,
-          eventTime,
-          messageId: null
-        };
+      const msg = await interaction.editReply({
+        embeds: [buildEmbed(event)],
+        components: [buttons(), ownerBtn(event)]
+      });
 
-        data.events.push(event);
-        await db.saveDB(data);
+      const saved = data.events.find(e => e.id === id);
+      if (saved) saved.messageId = msg.id;
 
-        const msg = await interaction.editReply({
-          embeds: [buildEmbed(event)],
-          components: [buttons(event), ownerBtn(event)]
-        });
-
-        const saved = data.events.find(e => e.id === id);
-        if (saved) saved.messageId = msg.id;
-        await db.saveDB(data);
-      }
+      await db.saveDB(data);
     }
 
     // ==========================
     // BUTTON
     // ==========================
-    if (interaction.isButton()) {
+    if (!interaction.isButton()) return;
 
-      let data = safeDB(await db.loadDB());
-      const event = data.events.find(e => e.messageId === interaction.message.id);
-      if (!event) return;
+    const event = data.events.find(e => e.messageId === interaction.message.id);
+    if (!event) return;
 
-      const uid = interaction.user.id;
-      const now = Date.now();
+    const uid = interaction.user.id;
 
-      // 🗑️ 解散（永遠可用）
-      if (interaction.customId.startsWith('delete_')) {
-        if (uid !== event.ownerId)
-          return replyError(interaction, '❌ 只有團長可以解散');
+    // ==========================
+    // 解散
+    // ==========================
+    if (interaction.customId.startsWith('delete_')) {
+      if (uid !== event.ownerId)
+        return interaction.reply({ content: '❌ 只有團長', ephemeral: true });
 
-        data.events = data.events.filter(e => e.id !== event.id);
-        await db.saveDB(data);
-        await interaction.message.delete().catch(() => {});
-        return;
-      }
+      data.events = data.events.filter(e => e.id !== event.id);
+      await db.saveDB(data);
 
-      // ❌ 離隊（永遠可用）
-      if (interaction.customId === 'leave') {
-        event.players = event.players.filter(p => p.id !== uid);
-        event.queue = event.queue.filter(p => p.id !== uid);
+      await interaction.message.delete().catch(() => {});
+      return;
+    }
 
-        await db.saveDB(data);
-
-        return interaction.update({
-          embeds: [buildEmbed(event)],
-          components: [buttons(event), ownerBtn(event)]
-        });
-      }
-
-      // ⛔ 活動已開始
-      if (now >= new Date(event.eventTime))
-        return replyError(interaction, '⏰ 活動已開始');
-
-      // 🚫 報名截止
-      if (now > new Date(event.endTime))
-        return replyError(interaction, '🚫 報名已截止');
-
-      // ==========================
-      // 報名
-      // ==========================
-      let role = null;
-      if (interaction.customId === 'tank') role = 'tanks';
-      if (interaction.customId === 'healer') role = 'healers';
-      if (interaction.customId === 'dps') role = 'dps';
-      if (!role) return;
+    // ==========================
+    // 離隊
+    // ==========================
+    if (interaction.customId === 'leave') {
 
       event.players = event.players.filter(p => p.id !== uid);
+      event.queue = event.queue.filter(p => p.id !== uid);
 
-      const count = event.players.filter(p => p.role === role).length;
-      const limit =
-        role === 'tanks' ? event.maxTanks :
-        role === 'healers' ? event.maxHealers :
-        Infinity;
-
-      if (count >= limit) {
-        if (!event.queue.find(q => q.id === uid))
-          event.queue.push({ id: uid, role });
-
-        await db.saveDB(data);
-        return replyError(interaction, '📥 已進入候補');
-      }
-
-      event.players.push({ id: uid, role });
       await db.saveDB(data);
 
       return interaction.update({
         embeds: [buildEmbed(event)],
-        components: [buttons(event), ownerBtn(event)]
+        components: [buttons(), ownerBtn(event)]
       });
     }
+
+    // ==========================
+    // ⛔ 已開始
+    // ==========================
+    if (now >= event.eventTime)
+      return interaction.reply({ content: '⏰ 活動已開始', ephemeral: true });
+
+    // ==========================
+    // 🚫 已截止（🔥核心修正）
+    // ==========================
+    if (now >= event.endTime)
+      return interaction.reply({ content: '🚫 報名已截止', ephemeral: true });
+
+    // ==========================
+    // 報名
+    // ==========================
+    let role = null;
+    if (interaction.customId === 'tank') role = 'tanks';
+    if (interaction.customId === 'healer') role = 'healers';
+    if (interaction.customId === 'dps') role = 'dps';
+
+    if (!role) return;
+
+    event.players = event.players.filter(p => p.id !== uid);
+
+    const count = event.players.filter(p => p.role === role).length;
+    const limit =
+      role === 'tanks' ? event.maxTanks :
+      role === 'healers' ? event.maxHealers :
+      Infinity;
+
+    if (count >= limit) {
+      if (!event.queue.find(q => q.id === uid))
+        event.queue.push({ id: uid, role });
+
+      await db.saveDB(data);
+      return interaction.reply({ content: '📥 候補', ephemeral: true });
+    }
+
+    event.players.push({ id: uid, role });
+
+    await db.saveDB(data);
+
+    return interaction.update({
+      embeds: [buildEmbed(event)],
+      components: [buttons(), ownerBtn(event)]
+    });
 
   } catch (err) {
     console.error(err);
