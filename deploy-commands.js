@@ -1,6 +1,11 @@
-const { REST, Routes, SlashCommandBuilder } = require('discord.js');
-const { token, clientId, guildId } = require('./config.json');
+require('dotenv').config();
 
+const { REST, Routes, SlashCommandBuilder } = require('discord.js');
+
+const token = process.env.TOKEN;
+const clientId = process.env.CLIENT_ID;
+const guildId = process.env.GUILD_ID;
+ 
 const commands = [
   new SlashCommandBuilder()
     .setName('event')
