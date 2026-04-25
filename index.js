@@ -86,13 +86,22 @@ function buildEmbed(event) {
     : now >= event.eventTime ? '⏰ 已開始'
     : '🟢 招募中';
 
-  return new EmbedBuilder()
-    .setTitle(`⚔️ ${event.name}`)
+   return new EmbedBuilder()
     .setColor(0x2ecc71)
+    .setTitle(`⚔️ ${event.name}`)
     .addFields(
+      { name: '👑 團長', value: `<@${event.ownerId}>`, inline: true },
       { name: '📊 狀態', value: status, inline: true },
       { name: '👥 人數', value: `${players.length}/${event.maxPlayers}`, inline: true },
-      { name: '⏳ 截止', value: formatTime(event.endTime), inline: true }
+
+      { name: '📅 開始', value: formatTime(event.eventTime), inline: true },
+      { name: '⏳ 截止', value: formatTime(event.endTime), inline: true },
+
+      { name: '🛡 坦', value: list(tanks, '🛡️'), inline: true },
+      { name: '💚 補', value: list(healers, '💚'), inline: true },
+      { name: '⚔️ 輸出', value: list(dps, '⚔️'), inline: true },
+
+      { name: '📥 候補', value: queue.length ? queue.map(q => `<@${q.id}>`).join('\n') : '—' }
     );
 }
 
