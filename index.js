@@ -196,7 +196,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     event = normalize(event);
 
     const uid = interaction.user.id;
-    const now = Date().toISOString();
+    const now = Date.now();
 
     const end = Number(event.endTime);
     const start = Number(event.eventTime);
@@ -207,6 +207,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     console.log('end date:', new Date(Number(event.endTime)).toISOString());
 console.log('start date:', new Date(Number(event.eventTime)).toISOString());
 console.log('now:', new Date().toISOString());
+
+console.log(event);
+console.log(event?.endTime);
+console.log(typeof event?.endTime);
 
     if (now > end)
       return interaction.reply({ content: '🚫 已截止', ephemeral: true });
