@@ -196,10 +196,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     event = normalize(event);
 
     const uid = interaction.user.id;
-    const now = Date.now();
+    const now = Date().toISOString();
 
-    const end = Number(event.endTime);
-    const start = Number(event.eventTime);
+    const end = Date(Number(event.endTime)).toISOString();
+    const start = Date(Number(event.eventTime)).toISOString();
 
     // ==========================
     // 🔥 最重要：截止判斷（一定放最上面）
