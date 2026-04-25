@@ -348,4 +348,35 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
+// ==========================
+// 百業戰提醒
+// ==========================
+client.once(Events.ClientReady, () => {
+
+  setInterval(async () => {
+    try {
+
+      const now = new Date(
+        new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" })
+      );
+
+      const day = now.getDay();
+      const hour = now.getHours();
+      const minute = now.getMinutes();
+
+      if ((day === 0 || day === 6) && hour === 20 && minute === 30) {
+
+        const channel = await client.channels.fetch("1439790753940242483");
+
+        await channel.send("<@&1451525866231169147> ⏰ 活動即將開始！");
+      }
+
+    } catch (err) {
+      console.error("scheduler error:", err);
+    }
+
+  }, 60000);
+});
+
+
 client.login(process.env.TOKEN);
