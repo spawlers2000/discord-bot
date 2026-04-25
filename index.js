@@ -253,8 +253,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
     // ==========================
     // 🚫 已截止（🔥核心修正）
     // ==========================
-    if (now >= event.endTime)
-      return interaction.reply({ content: '🚫 報名已截止', ephemeral: true });
+    const endTime = Number(event.endTime);
+
+if (now >= endTime) {
+  return interaction.reply({
+    content: '🚫 報名已截止',
+    ephemeral: true
+  });
+}
 
     // ==========================
     // 報名
