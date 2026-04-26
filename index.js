@@ -2,8 +2,9 @@ require('dotenv').config();
 
 const { Client, GatewayIntentBits, Events } = require('discord.js');
 
-const interactionCreate = require('./events/interactionCreate');
-const guildWarScheduler = require('./scheduler/guildWar');
+const loadEvents = require('./loaders/loadEvents');
+const loadSchedulers = require('./loaders/loadSchedulers');
+const loadCommands = require('./loaders/loadCommands');
 
 const client = new Client({
   intents: [
@@ -17,16 +18,15 @@ const client = new Client({
 // READY
 // ==========================
 client.once(Events.ClientReady, () => {
-  console.log("⚔️ RPG Raid Bot Ready");
-
-  // 啟動排程
-  guildWarScheduler(client);
+  console.log('⚔️ RPG Raid Bot Ready');
 });
 
 // ==========================
-// 載入事件
+// LOAD ALL
 // ==========================
-interactionCreate(client);
+loadCommands(client);
+loadEvents(client);
+loadSchedulers(client);
 
 // ==========================
 client.login(process.env.TOKEN);
