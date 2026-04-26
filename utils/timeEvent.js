@@ -5,14 +5,21 @@
 function parseTime(input) {
   if (!input) return null;
 
-  // 支援 "2026-04-26 20:00"
-  const normalized = input.replace(' ', 'T') + ':00';
+  // "2026-04-26 20:00"
+  const [datePart, timePart] = input.split(' ');
+  if (!datePart || !timePart) return null;
 
-  const date = new Date(normalized);
+  const [year, month, day] = datePart.split('-');
+  const [hour, minute] = timePart.split(':');
 
-  if (isNaN(date.getTime())) return null;
-
-  return date;
+  // 👉 手動建立「本地時間」
+  return new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute)
+  );
 }
 
 function formatTime(time) {
