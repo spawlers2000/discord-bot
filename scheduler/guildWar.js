@@ -12,8 +12,8 @@ module.exports = (client) => {
   console.log("🔥 guildWar scheduler STARTED");
 
   const TARGET_DAY = [0, 6];
-  const TARGET_HOUR = 18;
-  const TARGET_MINUTE = 50;
+  const TARGET_HOUR = 20;
+  const TARGET_MINUTE = 30;
 
   function nowTW() {
     return new Date(Date.now() + 8 * 60 * 60 * 1000);
