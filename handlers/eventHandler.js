@@ -156,8 +156,8 @@ async function handleButton(interaction) {
 
     const maxPlayers = event.maxPlayers;
 
-    // 🚨 1. 如果「總人數滿」→ 直接候補
-if (totalCount >= maxPlayers) {
+   // 🚨 總人數滿 → 候補
+if (event.players.length >= event.maxPlayers) {
 
   if (!event.queue.find(q => q.id === uid)) {
     event.queue.push({ id: uid, role });
@@ -165,17 +165,16 @@ if (totalCount >= maxPlayers) {
 
   await db.saveDB(data);
 
-  return interaction.reply({
-    content: '📥 已進候補',
-    ephemeral: true
+  // ⭐ 1. 先回覆（避免 interaction fail）
+  await interaction.deferUpdate();
+
+  // ⭐ 2. 強制更新畫面（關鍵）
+  await interaction.message.edit({
+    embeds: [buildEmbed(event)],
+    components: [buttons(event), ownerBtn(event)]
   });
 
-  await interaction.message.edit({
-  embeds: [buildEmbed(event)],
-  components: [buttons(event), ownerBtn(event)]
-});
-
-return;
+  return;
 }
 
 // 🚨 2. 如果「職業滿」→ 候補
