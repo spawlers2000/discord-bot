@@ -8,8 +8,8 @@ module.exports = (client) => {
 
   // 👉 設定固定時間
   const TARGET_DAY = [0, 6]; // 0=週日, 6=週六
-  const TARGET_HOUR = 20;
-  const TARGET_MINUTE = 30;
+  const TARGET_HOUR = 17;
+  const TARGET_MINUTE = 32;
 
   // ==========================
   // 計算下一次執行時間
