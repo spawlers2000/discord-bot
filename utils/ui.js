@@ -90,7 +90,9 @@ function buildEmbed(event) {
 
       {
         name: '📥 候補',
-        value: queue.length ? queue.map(q => `⏳ <@${q.id}>`).join('\n') : '—'
+        value: (event.queue && event.queue.length > 0)
+      ? event.queue.map(q => `⏳ <@${q.id}>`).join('\n')
+      : '—'
       }
     );
 
