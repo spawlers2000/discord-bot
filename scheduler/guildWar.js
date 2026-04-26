@@ -1,35 +1,31 @@
-const { nowTW } = require('../utils/time');
+let started = false;
 
 module.exports = (client) => {
 
-  const TARGET_DAY = [0, 6]; // 週日 / 週六
-  const TARGET_HOUR = 18;
-  const TARGET_MINUTE = 45;
-
-  let started = false;
-
-  // =========================
-  // 發送通知
-  // =========================
-  async function sendGuildWar() {
-    try {
-
-      const channel = await client.channels.fetch("1468841017019990188");
-
-      await channel.send(
-        " ⏰ 百業戰開始！請準備集合！"
-      );
-
-      console.log("✅ guildWar sent:", nowTW().toLocaleString());
-
-    } catch (err) {
-      console.error("❌ send error:", err);
-    }
+  if (started) {
+    console.log("⚠️ scheduler already running → skip");
+    return;
   }
 
-  // =========================
-  // 計算下一次時間
-  // =========================
+  started = true;
+
+  console.log("🔥 guildWar scheduler STARTED");
+
+  const TARGET_DAY = [0, 6];
+  const TARGET_HOUR = 18;
+  const TARGET_MINUTE = 50;
+
+  function nowTW() {
+    return new Date(Date.now() + 8 * 60 * 60 * 1000);
+  }
+
+  async function sendGuildWar() {
+    const channel = await client.channels.fetch("1468841017019990188");
+
+    await channel.send("  ⏰ 百業戰開始！");
+    console.log("✅ SENT:", new Date().toLocaleString());
+  }
+
   function getNextRunTime() {
 
     const now = nowTW();
@@ -51,13 +47,7 @@ module.exports = (client) => {
     return next;
   }
 
-  // =========================
-  // 主 scheduler
-  // =========================
   function schedule() {
-
-    if (started) return;
-    started = true;
 
     const now = nowTW();
     const runAt = getNextRunTime();
@@ -65,35 +55,21 @@ module.exports = (client) => {
 
     console.log("================================");
     console.log("🧪 SCHEDULER DEBUG");
-    console.log("NOW(TW):", now.toLocaleString('zh-TW'));
-    console.log("RUN(TW):", runAt.toLocaleString('zh-TW'));
-    console.log("DELAY  :", delay);
+    console.log("NOW :", now.toLocaleString());
+    console.log("RUN :", runAt.toLocaleString());
+    console.log("DELAY:", delay);
     console.log("================================");
 
-    // 🔥 如果時間已過 → 直接補發
     if (delay <= 0) {
-      console.log("⚠️ missed → immediate send");
-
-      sendGuildWar().then(() => {
-        started = false;
-        schedule();
-      });
-
+      sendGuildWar().then(schedule);
       return;
     }
 
     setTimeout(async () => {
-
       await sendGuildWar();
-
-      started = false;
       schedule();
-
     }, delay);
   }
 
-  // =========================
-  // 啟動
-  // =========================
   schedule();
 };
