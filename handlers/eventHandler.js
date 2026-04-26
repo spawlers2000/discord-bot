@@ -1,8 +1,8 @@
 const db = require('../db');
 const safeDB = require('../utils/dbSafe');
 
-const time = require('../utils/time');
-const { parseTime, formatTime } = time;
+// ⚔️ 活動專用時間工具（已與 scheduler 分離）
+const { parseTime, formatTime } = require('../utils/timeEvent');
 
 const { buildEmbed, buttons, ownerBtn } = require('../utils/ui');
 
@@ -32,7 +32,7 @@ async function createEvent(interaction) {
     console.log("🧪 parsed:", eventTime, endTime);
 
     if (!eventTime || !endTime) {
-      return interaction.editReply("❌ 時間格式錯誤");
+      return interaction.editReply("❌ 時間格式錯誤（請用：2026-04-26 20:00）");
     }
 
     const event = {
@@ -58,6 +58,7 @@ async function createEvent(interaction) {
       components: [buttons(event), ownerBtn(event)]
     });
 
+    // 儲存 messageId
     let data2 = safeDB(await db.loadDB());
     const saved = data2.events.find(e => e.id === event.id);
 
@@ -89,7 +90,7 @@ async function handleButton(interaction) {
 
   const uid = interaction.user.id;
 
-  // ⏳ 已截止
+  // ⏳ 已截止（報名截止時間）
   if (Date.now() > new Date(event.endTime).getTime()) {
     return interaction.reply({
       content: '⏳ 報名已截止',
@@ -98,7 +99,7 @@ async function handleButton(interaction) {
   }
 
   // ==========================
-  // 解散
+  // 解散隊伍
   // ==========================
   if (interaction.customId.startsWith('delete_')) {
 
