@@ -166,9 +166,16 @@ if (totalCount >= maxPlayers) {
   await db.saveDB(data);
 
   return interaction.reply({
-    content: '📥 已進候補（隊伍已滿）',
+    content: '📥 已進候補',
     ephemeral: true
   });
+
+  await interaction.message.edit({
+  embeds: [buildEmbed(event)],
+  components: [buttons(event), ownerBtn(event)]
+});
+
+return;
 }
 
 // 🚨 2. 如果「職業滿」→ 候補
