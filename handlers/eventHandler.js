@@ -136,29 +136,54 @@ async function handleButton(interaction) {
 
     if (!role) return;
 
+    // ❗ 先移除自己（避免重複加入）
     event.players = event.players.filter(p => p.id !== uid);
 
-    const count = event.players.filter(p => p.role === role).length;
+    // ⭐ 現在人數
+    const totalCount = event.players.filter(p => p.role === role).length;
 
-    const limit =
+    // ⭐ 職業人數
+    const roleCount = event.players.filter(p => p.role === role).length;
+
+    // ⭐ 上限
+    const roleLimit  =
       role === 'tanks' ? event.maxTanks :
       role === 'healers' ? event.maxHealers :
       Infinity;
 
-    if (count >= limit) {
+    const maxPlayers = event.maxPlayers;
 
-      if (!event.queue.find(q => q.id === uid)) {
-        event.queue.push({ id: uid, role });
-      }
+    // 🚨 1. 如果「總人數滿」→ 直接候補
+if (totalCount >= maxPlayers) {
 
-      await db.saveDB(data);
+  if (!event.queue.find(q => q.id === uid)) {
+    event.queue.push({ id: uid, role });
+  }
 
-      return interaction.reply({
-        content: '📥 候補隊列',
-        ephemeral: true
-      });
-    }
+  await db.saveDB(data);
 
+  return interaction.reply({
+    content: '📥 已進候補（隊伍已滿）',
+    ephemeral: true
+  });
+}
+
+// 🚨 2. 如果「職業滿」→ 候補
+if (roleCount >= roleLimit) {
+
+  if (!event.queue.find(q => q.id === uid)) {
+    event.queue.push({ id: uid, role });
+  }
+
+  await db.saveDB(data);
+
+  return interaction.reply({
+    content: '📥 已進候補（職業已滿）',
+    ephemeral: true
+  });
+}
+
+    // ⭐ 3. 正常加入
     event.players.push({ id: uid, role });
 
     await db.saveDB(data);
