@@ -87,6 +87,20 @@ async function handleButton(interaction) {
 
     const uid = interaction.user.id;
 
+  // 解散
+      if (interaction.customId.startsWith('delete_')) {
+
+        if (uid !== event.ownerId) {
+          return interaction.reply({ content: '❌ 只有團長可以解散', ephemeral: true });
+        }
+
+        data.events = data.events.filter(e => e.id !== event.id);
+        await db.saveDB(data);
+
+        await interaction.message.delete().catch(() => {});
+        return;
+      }
+
     // ⏳ 報名截止
     if (Date.now() > toTimestamp(event.endTime)) {
       return interaction.reply({
