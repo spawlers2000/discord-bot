@@ -11,6 +11,19 @@ const ROLE = {
   dps: { icon: '⚔️', name: '輸出' }
 };
 
+function parseEventTime(t) {
+  if (!t) return null;
+
+  // 2026-3-26-16-57 → 2026-03-26T16:57:00
+  const parts = t.split('-');
+  if (parts.length === 5) {
+    const [y, m, d, h, min] = parts;
+    return new Date(`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}T${h.padStart(2,'0')}:${min.padStart(2,'0')}:00`);
+  }
+
+  return new Date(t);
+}
+
 function buildEmbed(event, formatTime) {
 
   const tanks = event.players.filter(p => p.role === 'tanks');

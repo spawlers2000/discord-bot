@@ -1,18 +1,17 @@
-const eventHandler = require('../handlers/eventHandler');
+module.exports = (client) => {
 
-module.exports = {
-  name: 'interactionCreate',
-
-  async execute(interaction) {
+  client.on('interactionCreate', async (interaction) => {
 
     if (interaction.isChatInputCommand()) {
-      if (interaction.commandName === 'event') {
-        return eventHandler.createEvent(interaction);
-      }
+      const command = client.commands.get(interaction.commandName);
+      if (command) await command.execute(interaction);
     }
 
     if (interaction.isButton()) {
-      return eventHandler.handleButton(interaction);
+      const handler = require('../handlers/eventHandler');
+      await handler.handleButton(interaction);
     }
-  }
+
+  });
+
 };
