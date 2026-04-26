@@ -10,31 +10,36 @@ async function createEvent(interaction) {
 
   try {
 
+    console.log("🧪 createEvent START");
+
     await interaction.deferReply();
+
+    console.log("🧪 after deferReply");
 
     let data = safeDB(await db.loadDB());
 
-    const id = Date.now().toString();
+    console.log("🧪 db loaded");
 
     const eventTimeInput = interaction.options.getString('event-time');
     const endTimeInput = interaction.options.getString('end-time');
 
+    console.log("🧪 input:", eventTimeInput, endTimeInput);
+
     const eventTime = parseTime(eventTimeInput);
     const endTime = parseTime(endTimeInput);
 
+    console.log("🧪 parsed:", eventTime, endTime);
+
     if (!eventTime || !endTime) {
-      return interaction.editReply({
-        content: '❌ 時間格式錯誤，請用：2026-04-30 20:30'
-      });
+      return await interaction.editReply("❌ 時間格式錯誤");
     }
 
     const event = {
-      id,
+      id: Date.now().toString(),
       name: interaction.options.getString('name'),
       maxPlayers: interaction.options.getInteger('max'),
       maxTanks: interaction.options.getInteger('tanks'),
       maxHealers: interaction.options.getInteger('healers'),
-      maxDps: 999999,
       players: [],
       queue: [],
       ownerId: interaction.user.id,
@@ -43,29 +48,31 @@ async function createEvent(interaction) {
       messageId: null
     };
 
+    console.log("🧪 event built");
+
     data.events.push(event);
+
     await db.saveDB(data);
 
+    console.log("🧪 saved DB");
+
     const msg = await interaction.editReply({
-      embeds: [buildEmbed(event)],
-      components: [buttons(event), ownerBtn(event)]
+      content: "✅ 活動建立成功"
     });
 
-    let data2 = safeDB(await db.loadDB());
-    const saved = data2.events.find(e => e.id === id);
-    if (saved) saved.messageId = msg.id;
-    await db.saveDB(data2);
+    console.log("🧪 replied");
 
   } catch (err) {
 
-    console.error("❌ createEvent error:", err);
+    console.error("❌ createEvent ERROR FULL:", err);
+    console.error("❌ message:", err?.message);
+    console.error("❌ stack:", err?.stack);
 
     if (interaction.deferred) {
-      await interaction.editReply("❌ 建立活動失敗，請看 console");
+      await interaction.editReply("❌ 建立活動失敗（看 console）");
     }
   }
 }
-
 // ==========================
 // 按鈕處理
 // ==========================
