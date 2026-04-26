@@ -1,6 +1,9 @@
 const db = require('../db');
 const safeDB = require('../utils/dbSafe');
-const { parseTime } = require('../utils/time');
+
+const time = require('../utils/time');
+const { parseTime, formatTime } = time;
+
 const { buildEmbed, buttons, ownerBtn } = require('../utils/ui');
 
 // ==========================
@@ -13,8 +16,6 @@ async function createEvent(interaction) {
     console.log("🧪 createEvent START");
 
     await interaction.deferReply();
-
-    console.log("🧪 after deferReply");
 
     let data = safeDB(await db.loadDB());
 
@@ -31,7 +32,7 @@ async function createEvent(interaction) {
     console.log("🧪 parsed:", eventTime, endTime);
 
     if (!eventTime || !endTime) {
-      return await interaction.editReply("❌ 時間格式錯誤");
+      return interaction.editReply("❌ 時間格式錯誤");
     }
 
     const event = {
@@ -48,31 +49,34 @@ async function createEvent(interaction) {
       messageId: null
     };
 
-    console.log("🧪 event built");
-
     data.events.push(event);
 
     await db.saveDB(data);
 
-    console.log("🧪 saved DB");
-
     const msg = await interaction.editReply({
-      content: "✅ 活動建立成功"
+      embeds: [buildEmbed(event, formatTime)],
+      components: [buttons(event), ownerBtn(event)]
     });
 
-    console.log("🧪 replied");
+    let data2 = safeDB(await db.loadDB());
+    const saved = data2.events.find(e => e.id === event.id);
+
+    if (saved) saved.messageId = msg.id;
+
+    await db.saveDB(data2);
+
+    console.log("🧪 event created success");
 
   } catch (err) {
 
-    console.error("❌ createEvent ERROR FULL:", err);
-    console.error("❌ message:", err?.message);
-    console.error("❌ stack:", err?.stack);
+    console.error("❌ createEvent ERROR:", err);
 
     if (interaction.deferred) {
-      await interaction.editReply("❌ 建立活動失敗（看 console）");
+      await interaction.editReply("❌ 建立活動失敗（請看 console）");
     }
   }
 }
+
 // ==========================
 // 按鈕處理
 // ==========================
@@ -123,7 +127,7 @@ async function handleButton(interaction) {
     await db.saveDB(data);
 
     return interaction.update({
-      embeds: [buildEmbed(event)],
+      embeds: [buildEmbed(event, formatTime)],
       components: [buttons(event), ownerBtn(event)]
     });
   }
@@ -133,8 +137,8 @@ async function handleButton(interaction) {
   // ==========================
   let role = null;
 
-  if (interaction.customId === 'tank') role = 'tank';
-  if (interaction.customId === 'healer') role = 'healer';
+  if (interaction.customId === 'tank') role = 'tanks';
+  if (interaction.customId === 'healer') role = 'healers';
   if (interaction.customId === 'dps') role = 'dps';
 
   if (!role) return;
@@ -170,7 +174,7 @@ async function handleButton(interaction) {
   await db.saveDB(data);
 
   return interaction.update({
-    embeds: [buildEmbed(event)],
+    embeds: [buildEmbed(event, formatTime)],
     components: [buttons(event), ownerBtn(event)]
   });
 }
