@@ -117,6 +117,9 @@ async function handleButton(interaction) {
       event.players = event.players.filter(p => p.id !== uid);
       event.queue = event.queue.filter(p => p.id !== uid);
 
+      // ⭐ 關鍵：補位
+      await autoFill(event);
+
       await db.saveDB(data);
 
       return interaction.update({
@@ -185,7 +188,7 @@ if (roleCount >= roleLimit) {
 
     // ⭐ 3. 正常加入
     event.players.push({ id: uid, role });
-
+    await autoFill(event);  //補位
     await db.saveDB(data);
 
     return interaction.update({
@@ -202,6 +205,40 @@ if (roleCount >= roleLimit) {
         ephemeral: true
       });
     }
+  }
+}
+
+async function autoFill(event) {
+
+  const maxPlayers = event.maxPlayers;
+
+  // ❌ 已滿不用補
+  if (event.players.length >= maxPlayers) return;
+
+  // 👉 候補存在才補
+  if (!event.queue || event.queue.length === 0) return;
+
+  // ⭐ 嘗試逐個補位
+  for (let i = 0; i < event.queue.length; i++) {
+
+    const candidate = event.queue[i];
+
+    // ❗ 再檢查一次避免超人數
+    if (event.players.length >= maxPlayers) break;
+
+    // ❗ 避免重複
+    const already = event.players.find(p => p.id === candidate.id);
+    if (already) continue;
+
+    // ✔ 補進主隊
+    event.players.push({
+      id: candidate.id,
+      role: candidate.role
+    });
+
+    // ❌ 從候補移除
+    event.queue.splice(i, 1);
+    i--;
   }
 }
 
