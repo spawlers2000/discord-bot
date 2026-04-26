@@ -39,8 +39,8 @@ function parseEventTime(t) {
 // ==========================
 function buildEmbed(event) {
 
-  const tanks = event.players.filter(p => p.role === 'tank');
-  const healers = event.players.filter(p => p.role === 'healer');
+  const tanks = event.players.filter(p => p.role === 'tanks');
+  const healers = event.players.filter(p => p.role === 'healers');
   const dps = event.players.filter(p => p.role === 'dps');
   const queue = event.queue || [];
 
@@ -62,12 +62,12 @@ function buildEmbed(event) {
 
       {
         name: '📅 活動開始',
-        value: event.eventTime ? formatTime(event.eventTime) : '未設定',
+        value: formatTime(event.eventTime),
         inline: true
       },
       {
         name: '⏳ 報名截止',
-        value: event.endTime ? formatTime(event.endTime) : '未設定',
+        value: formatTime(event.endTime),
         inline: true
       },
       { name: '\u200b', value: '\u200b', inline: true },
