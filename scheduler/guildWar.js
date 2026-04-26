@@ -37,9 +37,13 @@ module.exports = (client) => {
   // 計算下一次執行時間
   // ==========================
   function getNextRunTime() {
-    const now = new Date();
+    const now = new Date(
+     new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" })
+    );
 
-    let next = new Date();
+    let next = new Date(
+     new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" })
+    );
     next.setSeconds(0, 0);
     next.setHours(TARGET_HOUR, TARGET_MINUTE, 0, 0);
 
