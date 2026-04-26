@@ -5,12 +5,20 @@ const {
   EmbedBuilder
 } = require('discord.js');
 
+const { formatTime } = require('./time');
+
+// ==========================
+// 角色設定（統一命名）
+// ==========================
 const ROLE = {
   tank: { icon: '🛡️', name: '坦克' },
   healer: { icon: '💚', name: '治療' },
   dps: { icon: '⚔️', name: '輸出' }
 };
 
+// ==========================
+// 時間解析（保留你的格式）
+// ==========================
 function parseEventTime(t) {
   if (!t) return null;
 
@@ -18,16 +26,21 @@ function parseEventTime(t) {
   const parts = t.split('-');
   if (parts.length === 5) {
     const [y, m, d, h, min] = parts;
-    return new Date(`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}T${h.padStart(2,'0')}:${min.padStart(2,'0')}:00`);
+    return new Date(
+      `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T${h.padStart(2, '0')}:${min.padStart(2, '0')}:00`
+    );
   }
 
   return new Date(t);
 }
 
-function buildEmbed(event, formatTime) {
+// ==========================
+// 建立 Embed
+// ==========================
+function buildEmbed(event) {
 
-  const tanks = event.players.filter(p => p.role === 'tanks');
-  const healers = event.players.filter(p => p.role === 'healers');
+  const tanks = event.players.filter(p => p.role === 'tank');
+  const healers = event.players.filter(p => p.role === 'healer');
   const dps = event.players.filter(p => p.role === 'dps');
   const queue = event.queue || [];
 
@@ -46,31 +59,77 @@ function buildEmbed(event, formatTime) {
       { name: '📊 狀態', value: status, inline: true },
       { name: '👥 人數', value: `${event.players.length}/${event.maxPlayers}`, inline: true },
 
-      { name: '📅 活動開始', value: event.eventTime ? formatTime(event.eventTime) : '未設定', inline: true },
-      { name: '⏳ 報名截止', value: event.endTime ? formatTime(event.endTime) : '未設定', inline: true },
+      {
+        name: '📅 活動開始',
+        value: event.eventTime ? formatTime(event.eventTime) : '未設定',
+        inline: true
+      },
+      {
+        name: '⏳ 報名截止',
+        value: event.endTime ? formatTime(event.endTime) : '未設定',
+        inline: true
+      },
       { name: '\u200b', value: '\u200b', inline: true },
 
-      { name: `🛡 坦 (${tanks.length}/${event.maxTanks})`, value: list(tanks, '🛡️'), inline: true },
-      { name: `💚 補 (${healers.length}/${event.maxHealers})`, value: list(healers, '💚'), inline: true },
-      { name: `⚔️ 輸出 (${dps.length})`, value: list(dps, '⚔️'), inline: true },
+      {
+        name: `🛡 坦 (${tanks.length}/${event.maxTanks})`,
+        value: list(tanks, '🛡️'),
+        inline: true
+      },
+      {
+        name: `💚 補 (${healers.length}/${event.maxHealers})`,
+        value: list(healers, '💚'),
+        inline: true
+      },
+      {
+        name: `⚔️ 輸出 (${dps.length})`,
+        value: list(dps, '⚔️'),
+        inline: true
+      },
 
-      { name: '📥 候補', value: queue.length ? queue.map(q => `⏳ <@${q.id}>`).join('\n') : '—' }
+      {
+        name: '📥 候補',
+        value: queue.length ? queue.map(q => `⏳ <@${q.id}>`).join('\n') : '—'
+      }
     );
 }
 
+// ==========================
+// 按鈕
+// ==========================
 function buttons(event) {
 
-  const tanks = event.players.filter(p => p.role === 'tanks').length;
-  const healers = event.players.filter(p => p.role === 'healers').length;
+  const tanks = event.players.filter(p => p.role === 'tank').length;
+  const healers = event.players.filter(p => p.role === 'healer').length;
 
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('tank').setLabel('🛡️ 坦').setStyle(ButtonStyle.Primary).setDisabled(tanks >= event.maxTanks),
-    new ButtonBuilder().setCustomId('healer').setLabel('💚 補').setStyle(ButtonStyle.Success).setDisabled(healers >= event.maxHealers),
-    new ButtonBuilder().setCustomId('dps').setLabel('⚔️ 輸出').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('leave').setLabel('❌ 離隊').setStyle(ButtonStyle.Danger)
+    new ButtonBuilder()
+      .setCustomId('tank')
+      .setLabel('🛡️ 坦')
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(tanks >= event.maxTanks),
+
+    new ButtonBuilder()
+      .setCustomId('healer')
+      .setLabel('💚 補')
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(healers >= event.maxHealers),
+
+    new ButtonBuilder()
+      .setCustomId('dps')
+      .setLabel('⚔️ 輸出')
+      .setStyle(ButtonStyle.Secondary),
+
+    new ButtonBuilder()
+      .setCustomId('leave')
+      .setLabel('❌ 離隊')
+      .setStyle(ButtonStyle.Danger)
   );
 }
 
+// ==========================
+// 團長按鈕
+// ==========================
 function ownerBtn(event) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -80,4 +139,8 @@ function ownerBtn(event) {
   );
 }
 
-module.exports = { buildEmbed, buttons, ownerBtn };
+module.exports = {
+  buildEmbed,
+  buttons,
+  ownerBtn
+};

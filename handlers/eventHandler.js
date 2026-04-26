@@ -1,6 +1,6 @@
 const db = require('../db');
 const safeDB = require('../utils/dbSafe');
-const { parseTime } = require('../utils/time');
+const { parseTime, formatTime } = require('../utils/time');
 const { buildEmbed, buttons, ownerBtn } = require('../utils/ui');
 
 // ==========================
