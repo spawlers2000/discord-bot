@@ -8,52 +8,62 @@ const { buildEmbed, buttons, ownerBtn } = require('../utils/ui');
 // ==========================
 async function createEvent(interaction) {
 
-  await interaction.deferReply();
+  try {
 
-  let data = safeDB(await db.loadDB());
+    await interaction.deferReply();
 
-  const id = Date.now().toString();
+    let data = safeDB(await db.loadDB());
 
-  const eventTimeInput = interaction.options.getString('event-time');
-  const endTimeInput = interaction.options.getString('end-time');
+    const id = Date.now().toString();
 
-  const eventTime = parseTime(eventTimeInput);
-  const endTime = parseTime(endTimeInput);
+    const eventTimeInput = interaction.options.getString('event-time');
+    const endTimeInput = interaction.options.getString('end-time');
 
-  if (!eventTime || !endTime) {
-    return interaction.editReply({
-      content: '❌ 時間格式錯誤，請用：2026-04-30 20:30'
+    const eventTime = parseTime(eventTimeInput);
+    const endTime = parseTime(endTimeInput);
+
+    if (!eventTime || !endTime) {
+      return interaction.editReply({
+        content: '❌ 時間格式錯誤，請用：2026-04-30 20:30'
+      });
+    }
+
+    const event = {
+      id,
+      name: interaction.options.getString('name'),
+      maxPlayers: interaction.options.getInteger('max'),
+      maxTanks: interaction.options.getInteger('tanks'),
+      maxHealers: interaction.options.getInteger('healers'),
+      maxDps: 999999,
+      players: [],
+      queue: [],
+      ownerId: interaction.user.id,
+      endTime,
+      eventTime,
+      messageId: null
+    };
+
+    data.events.push(event);
+    await db.saveDB(data);
+
+    const msg = await interaction.editReply({
+      embeds: [buildEmbed(event)],
+      components: [buttons(event), ownerBtn(event)]
     });
+
+    let data2 = safeDB(await db.loadDB());
+    const saved = data2.events.find(e => e.id === id);
+    if (saved) saved.messageId = msg.id;
+    await db.saveDB(data2);
+
+  } catch (err) {
+
+    console.error("❌ createEvent error:", err);
+
+    if (interaction.deferred) {
+      await interaction.editReply("❌ 建立活動失敗，請看 console");
+    }
   }
-
-  const event = {
-    id,
-    name: interaction.options.getString('name'),
-    maxPlayers: interaction.options.getInteger('max'),
-    maxTanks: interaction.options.getInteger('tanks'),
-    maxHealers: interaction.options.getInteger('healers'),
-    maxDps: 999999,
-    players: [],
-    queue: [],
-    ownerId: interaction.user.id,
-    endTime,
-    eventTime,
-    messageId: null
-  };
-
-  data.events.push(event);
-  await db.saveDB(data);
-
-  const msg = await interaction.editReply({
-    embeds: [buildEmbed(event)],
-    components: [buttons(event), ownerBtn(event)]
-  });
-
-  // 儲存 messageId
-  let data2 = safeDB(await db.loadDB());
-  const saved = data2.events.find(e => e.id === id);
-  if (saved) saved.messageId = msg.id;
-  await db.saveDB(data2);
 }
 
 // ==========================
