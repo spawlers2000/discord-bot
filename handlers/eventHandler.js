@@ -1,7 +1,6 @@
 const db = require('../db');
 const safeDB = require('../utils/dbSafe');
 
-// ⚔️ 活動專用時間工具（已與 scheduler 分離）
 const { parseTime, formatTime } = require('../utils/timeEvent');
 
 const { buildEmbed, buttons, ownerBtn } = require('../utils/ui');
@@ -19,8 +18,6 @@ async function createEvent(interaction) {
 
     let data = safeDB(await db.loadDB());
 
-    console.log("🧪 db loaded");
-
     const eventTimeInput = interaction.options.getString('event-time');
     const endTimeInput = interaction.options.getString('end-time');
 
@@ -32,7 +29,7 @@ async function createEvent(interaction) {
     console.log("🧪 parsed:", eventTime, endTime);
 
     if (!eventTime || !endTime) {
-      return interaction.editReply("❌ 時間格式錯誤（請用：2026-04-26 20:00）");
+      return interaction.editReply("❌ 時間格式錯誤（2026-04-26 20:00）");
     }
 
     const event = {
@@ -44,8 +41,11 @@ async function createEvent(interaction) {
       players: [],
       queue: [],
       ownerId: interaction.user.id,
+
+      // ⚠️ 直接存 Date（JSON 會變 ISO，但我們顯示時不再 new Date 亂轉）
       endTime,
       eventTime,
+
       messageId: null
     };
 
@@ -66,14 +66,13 @@ async function createEvent(interaction) {
 
     await db.saveDB(data2);
 
-    console.log("🧪 event created success");
+    console.log("🧪 event created OK");
 
   } catch (err) {
-
     console.error("❌ createEvent ERROR:", err);
 
     if (interaction.deferred) {
-      await interaction.editReply("❌ 建立活動失敗（請看 console）");
+      await interaction.editReply("❌ 建立活動失敗");
     }
   }
 }
@@ -90,7 +89,7 @@ async function handleButton(interaction) {
 
   const uid = interaction.user.id;
 
-  // ⏳ 已截止（報名截止時間）
+  // ⏳ 報名截止（直接比時間）
   if (Date.now() > new Date(event.endTime).getTime()) {
     return interaction.reply({
       content: '⏳ 報名已截止',
@@ -99,7 +98,7 @@ async function handleButton(interaction) {
   }
 
   // ==========================
-  // 解散隊伍
+  // 解散
   // ==========================
   if (interaction.customId.startsWith('delete_')) {
 
@@ -134,17 +133,16 @@ async function handleButton(interaction) {
   }
 
   // ==========================
-  // 加入角色
+  // 角色
   // ==========================
   let role = null;
 
-  if (interaction.customId === 'tank') role = 'tank';
-  if (interaction.customId === 'healer') role = 'healer';
+  if (interaction.customId === 'tank') role = 'tanks';
+  if (interaction.customId === 'healer') role = 'healers';
   if (interaction.customId === 'dps') role = 'dps';
 
   if (!role) return;
 
-  // 先移除舊角色
   event.players = event.players.filter(p => p.id !== uid);
 
   const count = event.players.filter(p => p.role === role).length;
@@ -154,7 +152,6 @@ async function handleButton(interaction) {
     role === 'healers' ? event.maxHealers :
     Infinity;
 
-  // 滿 → 候補
   if (count >= limit) {
 
     if (!event.queue.find(q => q.id === uid)) {
@@ -164,12 +161,11 @@ async function handleButton(interaction) {
     await db.saveDB(data);
 
     return interaction.reply({
-      content: '📥 已進入候補隊列',
+      content: '📥 已進入候補',
       ephemeral: true
     });
   }
 
-  // 正常加入
   event.players.push({ id: uid, role });
 
   await db.saveDB(data);

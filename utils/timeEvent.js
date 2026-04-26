@@ -12,7 +12,7 @@ function parseTime(input) {
   const [year, month, day] = datePart.split('-');
   const [hour, minute] = timePart.split(':');
 
-  // 👉 手動建立「本地時間」
+  // 👉 用本地時間建立（不走 UTC）
   return new Date(
     Number(year),
     Number(month) - 1,
@@ -22,8 +22,8 @@ function parseTime(input) {
   );
 }
 
-function formatTime(time) {
-  return new Date(time).toLocaleString('zh-TW', {
+function formatTime(date) {
+  return new Date(date).toLocaleString('zh-TW', {
     timeZone: 'Asia/Taipei',
     year: 'numeric',
     month: '2-digit',
