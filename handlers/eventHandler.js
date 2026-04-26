@@ -1,7 +1,11 @@
 const db = require('../db');
 const safeDB = require('../utils/dbSafe');
 
-const { parseTime, formatTime } = require('../utils/timeEvent');
+const {
+  parseTime,
+  formatTime,
+  toTimestamp
+} = require('../utils/timeEvent');
 
 const { buildEmbed, buttons, ownerBtn } = require('../utils/ui');
 
@@ -12,8 +16,6 @@ async function createEvent(interaction) {
 
   try {
 
-    console.log("🧪 createEvent START");
-
     await interaction.deferReply();
 
     let data = safeDB(await db.loadDB());
@@ -21,15 +23,11 @@ async function createEvent(interaction) {
     const eventTimeInput = interaction.options.getString('event-time');
     const endTimeInput = interaction.options.getString('end-time');
 
-    console.log("🧪 input:", eventTimeInput, endTimeInput);
-
     const eventTime = parseTime(eventTimeInput);
     const endTime = parseTime(endTimeInput);
 
-    console.log("🧪 parsed:", eventTime, endTime);
-
     if (!eventTime || !endTime) {
-      return interaction.editReply("❌ 時間格式錯誤（2026-04-26 20:00）");
+      return interaction.editReply("❌ 時間格式錯誤");
     }
 
     const event = {
@@ -38,13 +36,13 @@ async function createEvent(interaction) {
       maxPlayers: interaction.options.getInteger('max'),
       maxTanks: interaction.options.getInteger('tanks'),
       maxHealers: interaction.options.getInteger('healers'),
+
       players: [],
       queue: [],
       ownerId: interaction.user.id,
 
-      // ⚠️ 直接存 Date（JSON 會變 ISO，但我們顯示時不再 new Date 亂轉）
-      endTime,
       eventTime,
+      endTime,
 
       messageId: null
     };
@@ -54,11 +52,10 @@ async function createEvent(interaction) {
     await db.saveDB(data);
 
     const msg = await interaction.editReply({
-      embeds: [buildEmbed(event, formatTime)],
+      embeds: [buildEmbed(event)],
       components: [buttons(event), ownerBtn(event)]
     });
 
-    // 儲存 messageId
     let data2 = safeDB(await db.loadDB());
     const saved = data2.events.find(e => e.id === event.id);
 
@@ -66,19 +63,17 @@ async function createEvent(interaction) {
 
     await db.saveDB(data2);
 
-    console.log("🧪 event created OK");
-
   } catch (err) {
-    console.error("❌ createEvent ERROR:", err);
+    console.error(err);
 
     if (interaction.deferred) {
-      await interaction.editReply("❌ 建立活動失敗");
+      await interaction.editReply("❌ 建立失敗");
     }
   }
 }
 
 // ==========================
-// 按鈕處理
+// 按鈕
 // ==========================
 async function handleButton(interaction) {
 
@@ -89,36 +84,14 @@ async function handleButton(interaction) {
 
   const uid = interaction.user.id;
 
-  // ⏳ 報名截止（直接比時間）
-  if (Date.now() > new Date(event.endTime).getTime()) {
+  // ⏳ 報名截止
+  if (Date.now() > toTimestamp(event.endTime)) {
     return interaction.reply({
       content: '⏳ 報名已截止',
       ephemeral: true
     });
   }
 
-  // ==========================
-  // 解散
-  // ==========================
-  if (interaction.customId.startsWith('delete_')) {
-
-    if (uid !== event.ownerId) {
-      return interaction.reply({
-        content: '❌ 只有團長可以解散',
-        ephemeral: true
-      });
-    }
-
-    data.events = data.events.filter(e => e.id !== event.id);
-    await db.saveDB(data);
-
-    await interaction.message.delete().catch(() => {});
-    return;
-  }
-
-  // ==========================
-  // 離隊
-  // ==========================
   if (interaction.customId === 'leave') {
 
     event.players = event.players.filter(p => p.id !== uid);
@@ -127,14 +100,11 @@ async function handleButton(interaction) {
     await db.saveDB(data);
 
     return interaction.update({
-      embeds: [buildEmbed(event, formatTime)],
+      embeds: [buildEmbed(event)],
       components: [buttons(event), ownerBtn(event)]
     });
   }
 
-  // ==========================
-  // 角色
-  // ==========================
   let role = null;
 
   if (interaction.customId === 'tank') role = 'tanks';
@@ -161,7 +131,7 @@ async function handleButton(interaction) {
     await db.saveDB(data);
 
     return interaction.reply({
-      content: '📥 已進入候補',
+      content: '📥 候補隊列',
       ephemeral: true
     });
   }
@@ -171,7 +141,7 @@ async function handleButton(interaction) {
   await db.saveDB(data);
 
   return interaction.update({
-    embeds: [buildEmbed(event, formatTime)],
+    embeds: [buildEmbed(event)],
     components: [buttons(event), ownerBtn(event)]
   });
 }

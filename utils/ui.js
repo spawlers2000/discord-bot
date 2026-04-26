@@ -54,6 +54,7 @@ function buildEmbed(event) {
 
   return new EmbedBuilder()
     .setTitle(`⚔️ ${event.name}`)
+    .setColor(getStatusColor(event))
     .addFields(
       { name: '👑 團長', value: `<@${event.ownerId}>`, inline: true },
       { name: '📊 狀態', value: status, inline: true },
@@ -92,6 +93,8 @@ function buildEmbed(event) {
         value: queue.length ? queue.map(q => `⏳ <@${q.id}>`).join('\n') : '—'
       }
     );
+
+    
 }
 
 // ==========================
@@ -137,6 +140,19 @@ function ownerBtn(event) {
       .setLabel('🗑️ 解散隊伍')
       .setStyle(ButtonStyle.Danger)
   );
+}
+
+function getStatusColor(event) {
+
+  const tanks = event.players.filter(p => p.role === 'tanks').length;
+  const healers = event.players.filter(p => p.role === 'healers').length;
+
+  const total = event.players.length;
+  const max = event.maxPlayers;
+
+  if (total >= max) return 0xff0000; // 🔴 滿
+  if (total >= max * 0.7) return 0xffff00; // 🟡 快滿
+  return 0x00ff00; // 🟢 招募中
 }
 
 module.exports = {
