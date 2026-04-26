@@ -20,7 +20,7 @@ module.exports = (client) => {
   }
 
   async function sendGuildWar() {
-    const channel = await client.channels.fetch("1439790753940242483");
+    const channel = await client.channels.fetch("1459061997030215848");
 
     await channel.send("<@&1451525866231169147> ⏰ 提醒：~百業戰~即將開始！請準備集合！");
     console.log("✅ SENT:", new Date().toLocaleString());
