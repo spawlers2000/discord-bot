@@ -138,8 +138,8 @@ async function handleButton(interaction) {
   // ==========================
   let role = null;
 
-  if (interaction.customId === 'tank') role = 'tanks';
-  if (interaction.customId === 'healer') role = 'healers';
+  if (interaction.customId === 'tank') role = 'tank';
+  if (interaction.customId === 'healer') role = 'healer';
   if (interaction.customId === 'dps') role = 'dps';
 
   if (!role) return;
