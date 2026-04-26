@@ -6,8 +6,8 @@ const db = require('../db');
 module.exports = (client) => {
 
   const TARGET_DAY = [0, 6]; // 週日 / 週六
-  const TARGET_HOUR = 17;
-  const TARGET_MINUTE = 45;
+  const TARGET_HOUR = 18;
+  const TARGET_MINUTE = 28;
 
   let running = false;
 
