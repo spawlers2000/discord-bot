@@ -14,9 +14,12 @@ module.exports = (client) => {
   // ==========================
   // 發送提醒
   // ==========================
+  console.log("🔥 guildWar scheduler LOADED");
+  console.log("📌 schedule() CALLED");
+
   async function sendGuildWar() {
     try {
-
+  console.log("📌 schedule() CALLED");
       const channel = await client.channels.fetch("1468841017019990188");
 
       await channel.send(
