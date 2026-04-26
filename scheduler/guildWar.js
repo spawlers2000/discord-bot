@@ -4,7 +4,7 @@ module.exports = (client) => {
 
   const TARGET_DAY = [0, 6]; // 週日 / 週六
   const TARGET_HOUR = 18;
-  const TARGET_MINUTE = 40;
+  const TARGET_MINUTE = 45;
 
   let started = false;
 
@@ -14,10 +14,10 @@ module.exports = (client) => {
   async function sendGuildWar() {
     try {
 
-      const channel = await client.channels.fetch("1439790753940242483");
+      const channel = await client.channels.fetch("1468841017019990188");
 
       await channel.send(
-        "<@&1451525866231169147> ⏰ 百業戰開始！請準備集合！"
+        " ⏰ 百業戰開始！請準備集合！"
       );
 
       console.log("✅ guildWar sent:", nowTW().toLocaleString());
