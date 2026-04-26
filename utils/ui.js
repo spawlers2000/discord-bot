@@ -62,12 +62,12 @@ function buildEmbed(event) {
 
       {
         name: '📅 活動開始',
-        value: formatTime(event.eventTime),
+        value: safeFormatTime(event.eventTime),
         inline: true
       },
       {
         name: '⏳ 報名截止',
-        value: formatTime(event.endTime),
+        value: safeFormatTime(event.endTime),
         inline: true
       },
       { name: '\u200b', value: '\u200b', inline: true },
@@ -142,6 +142,9 @@ function ownerBtn(event) {
   );
 }
 
+// ==========================
+// 邊框顏色
+// ==========================
 function getStatusColor(event) {
 
   const tanks = event.players.filter(p => p.role === 'tanks').length;
@@ -153,6 +156,46 @@ function getStatusColor(event) {
   if (total >= max) return 0xff0000; // 🔴 滿
   if (total >= max * 0.7) return 0xffff00; // 🟡 快滿
   return 0x00ff00; // 🟢 招募中
+}
+
+
+function safeFormatTime(input) {
+  if (!input) return '未設定';
+
+  // 情況1：字串格式 "2026-04-26 20:00"
+  if (typeof input === 'string' && input.includes(' ')) {
+    const [datePart, timePart] = input.split(' ');
+
+    const [y, m, d] = datePart.split('-');
+    const [h, min] = timePart.split(':');
+
+    const date = new Date(y, m - 1, d, h, min);
+
+    return isNaN(date.getTime())
+      ? '時間錯誤'
+      : date.toLocaleString('zh-TW', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        });
+  }
+
+  // 情況2：ISO / Date
+  const date = new Date(input);
+
+  return isNaN(date.getTime())
+    ? '時間錯誤'
+    : date.toLocaleString('zh-TW', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
 }
 
 module.exports = {

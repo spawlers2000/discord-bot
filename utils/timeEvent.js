@@ -1,38 +1,22 @@
-// ==========================
-// 建立活動的時間用
-// ==========================
-
 function parseTime(input) {
   if (!input) return null;
 
   // "2026-04-26 20:00"
+  return input;
+}
+
+function formatTime(input) {
+  if (!input) return '未設定';
+
   const [datePart, timePart] = input.split(' ');
-  if (!datePart || !timePart) return null;
+  if (!datePart || !timePart) return '未設定';
 
   const [y, m, d] = datePart.split('-');
   const [h, min] = timePart.split(':');
 
-  // 👉 用本地時間建構（避免 UTC +8 問題）
-  return {
-    year: Number(y),
-    month: Number(m),
-    day: Number(d),
-    hour: Number(h),
-    minute: Number(min)
-  };
-}
+  const date = new Date(y, m - 1, d, h, min);
 
-// 👉 顯示用（唯一轉 Date 的地方）
-function formatTime(t) {
-  if (!t) return '未設定';
-
-  const date = new Date(
-    t.year,
-    t.month - 1,
-    t.day,
-    t.hour,
-    t.minute
-  );
+  if (isNaN(date.getTime())) return '時間錯誤';
 
   return date.toLocaleString('zh-TW', {
     year: 'numeric',
@@ -44,17 +28,14 @@ function formatTime(t) {
   });
 }
 
-// 👉 比較時間用
-function toTimestamp(t) {
-  if (!t) return 0;
+function toTimestamp(input) {
+  if (!input) return 0;
 
-  return new Date(
-    t.year,
-    t.month - 1,
-    t.day,
-    t.hour,
-    t.minute
-  ).getTime();
+  const [datePart, timePart] = input.split(' ');
+  const [y, m, d] = datePart.split('-');
+  const [h, min] = timePart.split(':');
+
+  return new Date(y, m - 1, d, h, min).getTime();
 }
 
 module.exports = { parseTime, formatTime, toTimestamp };

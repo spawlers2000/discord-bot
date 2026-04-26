@@ -27,7 +27,7 @@ async function createEvent(interaction) {
     const endTime = parseTime(endTimeInput);
 
     if (!eventTime || !endTime) {
-      return interaction.editReply("❌ 時間格式錯誤");
+      return interaction.editReply("❌ 時間格式錯誤（YYYY-MM-DD HH:mm）");
     }
 
     const event = {
@@ -41,6 +41,7 @@ async function createEvent(interaction) {
       queue: [],
       ownerId: interaction.user.id,
 
+      // 🔥 統一：只存字串
       eventTime,
       endTime,
 
@@ -64,7 +65,7 @@ async function createEvent(interaction) {
     await db.saveDB(data2);
 
   } catch (err) {
-    console.error(err);
+    console.error("❌ createEvent:", err);
 
     if (interaction.deferred) {
       await interaction.editReply("❌ 建立失敗");
@@ -73,29 +74,78 @@ async function createEvent(interaction) {
 }
 
 // ==========================
-// 按鈕
+// 按鈕處理
 // ==========================
 async function handleButton(interaction) {
 
-  let data = safeDB(await db.loadDB());
+  try {
 
-  const event = data.events.find(e => e.messageId === interaction.message.id);
-  if (!event) return;
+    let data = safeDB(await db.loadDB());
 
-  const uid = interaction.user.id;
+    const event = data.events.find(e => e.messageId === interaction.message.id);
+    if (!event) return;
 
-  // ⏳ 報名截止
-  if (Date.now() > toTimestamp(event.endTime)) {
-    return interaction.reply({
-      content: '⏳ 報名已截止',
-      ephemeral: true
-    });
-  }
+    const uid = interaction.user.id;
 
-  if (interaction.customId === 'leave') {
+    // ⏳ 報名截止
+    if (Date.now() > toTimestamp(event.endTime)) {
+      return interaction.reply({
+        content: '⏳ 報名已截止',
+        ephemeral: true
+      });
+    }
+
+    // ==========================
+    // 離隊
+    // ==========================
+    if (interaction.customId === 'leave') {
+
+      event.players = event.players.filter(p => p.id !== uid);
+      event.queue = event.queue.filter(p => p.id !== uid);
+
+      await db.saveDB(data);
+
+      return interaction.update({
+        embeds: [buildEmbed(event)],
+        components: [buttons(event), ownerBtn(event)]
+      });
+    }
+
+    // ==========================
+    // 角色
+    // ==========================
+    let role = null;
+
+    if (interaction.customId === 'tank') role = 'tanks';
+    if (interaction.customId === 'healer') role = 'healers';
+    if (interaction.customId === 'dps') role = 'dps';
+
+    if (!role) return;
 
     event.players = event.players.filter(p => p.id !== uid);
-    event.queue = event.queue.filter(p => p.id !== uid);
+
+    const count = event.players.filter(p => p.role === role).length;
+
+    const limit =
+      role === 'tanks' ? event.maxTanks :
+      role === 'healers' ? event.maxHealers :
+      Infinity;
+
+    if (count >= limit) {
+
+      if (!event.queue.find(q => q.id === uid)) {
+        event.queue.push({ id: uid, role });
+      }
+
+      await db.saveDB(data);
+
+      return interaction.reply({
+        content: '📥 候補隊列',
+        ephemeral: true
+      });
+    }
+
+    event.players.push({ id: uid, role });
 
     await db.saveDB(data);
 
@@ -103,47 +153,17 @@ async function handleButton(interaction) {
       embeds: [buildEmbed(event)],
       components: [buttons(event), ownerBtn(event)]
     });
-  }
 
-  let role = null;
+  } catch (err) {
+    console.error("❌ handleButton:", err);
 
-  if (interaction.customId === 'tank') role = 'tanks';
-  if (interaction.customId === 'healer') role = 'healers';
-  if (interaction.customId === 'dps') role = 'dps';
-
-  if (!role) return;
-
-  event.players = event.players.filter(p => p.id !== uid);
-
-  const count = event.players.filter(p => p.role === role).length;
-
-  const limit =
-    role === 'tanks' ? event.maxTanks :
-    role === 'healers' ? event.maxHealers :
-    Infinity;
-
-  if (count >= limit) {
-
-    if (!event.queue.find(q => q.id === uid)) {
-      event.queue.push({ id: uid, role });
+    if (!interaction.replied) {
+      await interaction.reply({
+        content: '❌ 發生錯誤',
+        ephemeral: true
+      });
     }
-
-    await db.saveDB(data);
-
-    return interaction.reply({
-      content: '📥 候補隊列',
-      ephemeral: true
-    });
   }
-
-  event.players.push({ id: uid, role });
-
-  await db.saveDB(data);
-
-  return interaction.update({
-    embeds: [buildEmbed(event)],
-    components: [buttons(event), ownerBtn(event)]
-  });
 }
 
 module.exports = {
