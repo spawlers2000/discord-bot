@@ -1,55 +1,45 @@
-const db = require('../db');
+const { nowTW } = require('../utils/time');
 
-// ==========================
-// 百業戰提醒（穩定 production 版）
-// ==========================
 module.exports = (client) => {
 
   const TARGET_DAY = [0, 6]; // 週日 / 週六
   const TARGET_HOUR = 18;
-  const TARGET_MINUTE = 35;
+  const TARGET_MINUTE = 40;
 
-  let running = false;
+  let started = false;
 
-  // ==========================
-  // 發送提醒
-  // ==========================
-  console.log("🔥 guildWar scheduler LOADED");
-  console.log("📌 schedule() CALLED");
-
+  // =========================
+  // 發送通知
+  // =========================
   async function sendGuildWar() {
     try {
-  console.log("📌 schedule() CALLED");
-      const channel = await client.channels.fetch("1468841017019990188");
+
+      const channel = await client.channels.fetch("1439790753940242483");
 
       await channel.send(
-        "  ⏰ 百業戰開始！請準備集合！"
+        "<@&1451525866231169147> ⏰ 百業戰開始！請準備集合！"
       );
 
-      console.log("✅ guildWar sent:", new Date().toLocaleString());
+      console.log("✅ guildWar sent:", nowTW().toLocaleString());
 
     } catch (err) {
-      console.error("❌ sendGuildWar error:", err);
+      console.error("❌ send error:", err);
     }
   }
 
-  // ==========================
-  // 計算下一次執行時間
-  // ==========================
+  // =========================
+  // 計算下一次時間
+  // =========================
   function getNextRunTime() {
-    const now = new Date(
-     new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" })
-    );
 
-    let next = new Date(
-     new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" })
-    );
+    const now = nowTW();
+
+    let next = new Date(now);
     next.setSeconds(0, 0);
     next.setHours(TARGET_HOUR, TARGET_MINUTE, 0, 0);
 
     const isTargetDay = TARGET_DAY.includes(now.getDay());
 
-    // 👉 如果不是目標日 or 已過時間 → 找下一天
     if (!isTargetDay || now > next) {
       do {
         next.setDate(next.getDate() + 1);
@@ -61,37 +51,31 @@ module.exports = (client) => {
     return next;
   }
 
-  // ==========================
+  // =========================
   // 主 scheduler
-  // ==========================
+  // =========================
   function schedule() {
 
-    if (running) return;
-    running = true;
+    if (started) return;
+    started = true;
 
-    const now = new Date();
+    const now = nowTW();
     const runAt = getNextRunTime();
     const delay = runAt - now;
 
-    // ==========================
-    // DEBUG（你會看到這個）
-    // ==========================
     console.log("================================");
     console.log("🧪 SCHEDULER DEBUG");
-    console.log("NOW     :", now.toLocaleString());
-    console.log("RUN AT  :", runAt.toLocaleString());
-    console.log("DELAY   :", delay);
-    console.log("DAY     :", now.getDay());
+    console.log("NOW(TW):", now.toLocaleString('zh-TW'));
+    console.log("RUN(TW):", runAt.toLocaleString('zh-TW'));
+    console.log("DELAY  :", delay);
     console.log("================================");
 
-    // ==========================
-    // 🔥 重啟補償（關鍵）
-    // ==========================
+    // 🔥 如果時間已過 → 直接補發
     if (delay <= 0) {
-      console.log("⚠️ missed schedule → sending immediately");
+      console.log("⚠️ missed → immediate send");
 
       sendGuildWar().then(() => {
-        running = false;
+        started = false;
         schedule();
       });
 
@@ -102,14 +86,14 @@ module.exports = (client) => {
 
       await sendGuildWar();
 
-      running = false;
+      started = false;
       schedule();
 
     }, delay);
   }
 
-  // ==========================
+  // =========================
   // 啟動
-  // ==========================
+  // =========================
   schedule();
 };

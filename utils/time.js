@@ -1,23 +1,21 @@
+function nowTW() {
+  // 👉 直接用 UTC +8（最穩，不受 container 影響）
+  return new Date(Date.now() + 8 * 60 * 60 * 1000);
+}
+
+function formatTime(date) {
+  return new Date(date).toLocaleString('zh-TW', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+}
+
 module.exports = {
-  parseTime(input) {
-    if (!input) return null;
-
-    input = input.replace(' ', 'T');
-    const date = new Date(input);
-
-    if (isNaN(date)) return null;
-
-    return date.toISOString();
-  },
-
-  formatTime(time) {
-    return new Date(time).toLocaleString('zh-TW', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    });
-  }
+  nowTW,
+  formatTime
 };

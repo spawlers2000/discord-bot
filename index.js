@@ -19,7 +19,7 @@ const client = new Client({
 // ==========================
 client.once(Events.ClientReady, () => {
   console.log('⚔️ RPG Raid Bot Ready');
-   require('./scheduler/guildWar')(client);
+     require('./scheduler/guildWar')(client);
 });
 
 // ==========================
