@@ -9,8 +9,7 @@
     "register": "node deploy-commands.js"
   },
   "dependencies": {
-    "discord.js": "^14.15.3",
-    "dotenv": "^16.4.5"
+    "discord.js": "^14.15.3"
   },
   "engines": {
     "node": ">=18.0.0"

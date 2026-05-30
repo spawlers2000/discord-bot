@@ -1,7 +1,6 @@
 // index.js
 // Discord 組隊機器人 v2 — 主程式
 
-import "dotenv/config";
 import { Client, GatewayIntentBits, Collection } from "discord.js";
 
 import * as partyCommand       from "./commands/party.js";
@@ -39,7 +38,7 @@ const partyStore = new Map();
 // ─────────────────────────────────────────────────────
 //  Ready
 // ─────────────────────────────────────────────────────
-client.once("clientReady", (c) => {
+client.once("ready", (c) => {
   console.log(`✅  機器人上線：${c.user.tag}`);
   console.log(`📡  已加入 ${c.guilds.cache.size} 個伺服器`);
 

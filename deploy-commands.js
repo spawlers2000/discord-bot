@@ -2,7 +2,6 @@
 // 向 Discord 註冊斜線指令，新增或修改指令後執行一次即可
 // 執行方式：node deploy-commands.js
 
-import "dotenv/config";
 import { REST, Routes } from "discord.js";
 import * as partyCommand    from "./commands/party.js";
 import * as announceCommand from "./commands/announce.js";
