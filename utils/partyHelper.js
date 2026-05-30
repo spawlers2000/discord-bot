@@ -244,7 +244,12 @@ export function buildPartyEmbed(party) {
   }
 
   return new EmbedBuilder()
-    .setColor(party.status === "disbanded" ? 0x99aab5 : 0x5865f2)
+    .setColor(
+      party.status === "disbanded" ? 0x99aab5 :
+      party.status === "full"      ? 0xed4245 :
+      party.status === "closed"    ? 0x99aab5 :
+      0x57f287  // 招募中 → 綠色
+    )
     .setTitle(`⚔️　${party.title}`)
     .setDescription(`> 由 <@${party.leader}> 建立`)
     .addFields(

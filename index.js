@@ -140,7 +140,7 @@ setInterval(() => {
 //  登入
 // ─────────────────────────────────────────────────────
 if (!process.env.TOKEN) {
-  console.error("❌  找不到 TOKEN！請確認 .env 是否設定正確。");
+  console.error("❌  找不到 TOKEN！請確認環境變數是否設定正確。");
   process.exit(1);
 }
 

@@ -10,11 +10,11 @@ const commands = [
   partyCommand.data.toJSON(),
   announceCommand.data.toJSON(),
 ];
-const rest = new REST().setToken(process.env.DISCORD_TOKEN);
+const rest = new REST().setToken(process.env.TOKEN);
 
 (async () => {
-  if (!process.env.DISCORD_TOKEN || !process.env.CLIENT_ID) {
-    console.error("❌  請先在 .env 填寫 DISCORD_TOKEN 和 CLIENT_ID");
+  if (!process.env.TOKEN || !process.env.CLIENT_ID) {
+    console.error("❌  請先設定環境變數 TOKEN 和 CLIENT_ID");
     process.exit(1);
   }
 
