@@ -39,7 +39,7 @@ const partyStore = new Map();
 // ─────────────────────────────────────────────────────
 //  Ready
 // ─────────────────────────────────────────────────────
-client.once("ready", (c) => {
+client.once("clientReady", (c) => {
   console.log(`✅  機器人上線：${c.user.tag}`);
   console.log(`📡  已加入 ${c.guilds.cache.size} 個伺服器`);
 
