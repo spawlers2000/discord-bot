@@ -1,21 +1,18 @@
 {
-  "name": "discord-bot",
-  "version": "1.0.0",
-  "description": "",
+  "name": "discord-party-bot",
+  "version": "2.0.0",
+  "description": "Discord 組隊機器人 v2 — Modal + Select 選單流程",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "start": "node index.js",
-    "deploy": "node deploy.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "register": "node deploy-commands.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "discord.js": "^14.26.3",
-    "dotenv": "^17.4.2",
-    "mongodb": "^7.2.0",
-    "node-cron": "^4.2.1"
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
