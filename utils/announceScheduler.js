@@ -15,7 +15,7 @@ export function startAnnounceScheduler(client) {
     const hour   = tw.getUTCHours();
     const minute = tw.getUTCMinutes();
 
-    if (!((day === 6 || day === 0) && hour === 20 && minute === 30)) return;
+    if (!((day === 6 || day === 0) && hour === 20 && minute === 25)) return;
 
     const firedKey = `${tw.getUTCFullYear()}-${tw.getUTCMonth()}-${tw.getUTCDate()}-2030`;
 
@@ -68,8 +68,8 @@ function buildAnnounceEmbed() {
     .setTitle("⚔️　百業戰開始囉！！")
     .setDescription(
       "## 百業戰現在開放！\n" +
-      "趕快揪隊友一起衝！\n\n" +
-      "> 使用 `/隊伍` 快速建立隊伍，開始招募！"
+      "趕快揪隊友一起衝！\n\n" 
+      
     )
     .setTimestamp()
     .setFooter({ text: "每週六、日 20:30 自動提醒" });
