@@ -13,6 +13,7 @@ import {
 }                              from "./handlers/configHandler.js";
 import { handlePartyButton }   from "./handlers/buttonHandler.js";
 import { startAnnounceScheduler } from "./utils/announceScheduler.js";
+import { connectDB } from "./utils/db.js";
 
 // ─────────────────────────────────────────────────────
 //  Client
@@ -144,6 +145,7 @@ if (!process.env.TOKEN) {
   process.exit(1);
 }
 
+await connectDB();
 client.login(process.env.TOKEN);
 
 async function safeReply(interaction, content) {

@@ -9,7 +9,8 @@
     "register": "node deploy-commands.js"
   },
   "dependencies": {
-    "discord.js": "^14.15.3"
+    "discord.js": "^14.15.3",
+    "mongoose": "^8.4.0"
   },
   "engines": {
     "node": ">=18.0.0"
