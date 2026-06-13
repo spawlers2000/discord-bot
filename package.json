@@ -6,8 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "register": "node deploy-commands.js",
-    "prepare": "npm install"
+    "register": "node deploy-commands.js"
+   
   },
   "dependencies": {
     "discord.js": "^14.15.3",

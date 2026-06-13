@@ -171,7 +171,7 @@ export async function handleConfigButton(interaction, draftStore, partyStore) {
       activityTime,
       deadlineTime,
       slots,
-      substitutes:  [],
+      substitutes:  { tank: [], healer: [], dps: [] },
       status:       "recruiting",
       messageId:    null,
       channelId:    interaction.channelId,

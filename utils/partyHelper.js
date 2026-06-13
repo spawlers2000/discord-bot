@@ -22,7 +22,6 @@ export function parseDateTime(dateStr, timeStr) {
   return isNaN(dt.getTime()) ? null : dt;
 }
 
-// Discord 動態時間戳
 export function ts(date, fmt = "f") {
   return `<t:${Math.floor(date.getTime() / 1000)}:${fmt}>`;
 }
@@ -103,7 +102,7 @@ export function isConfigReady(draft) {
 }
 
 // ─────────────────────────────────────────────────────
-//  設定介面 Embed（建立流程，ephemeral）
+//  設定介面 Embed
 // ─────────────────────────────────────────────────────
 export function buildConfigEmbed(draft) {
   const check = (v) => (v ? "✅" : "⬜");
@@ -157,7 +156,6 @@ export function buildConfigComponents(draft) {
   const uid = draft.userId;
   const rows = [];
 
-  // ① 活動時間
   rows.push(new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(`cfg:time:${uid}`)
@@ -170,7 +168,6 @@ export function buildConfigComponents(draft) {
       )
   ));
 
-  // ② 截止時間（活動時間選完才啟用）
   rows.push(new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(`cfg:deadline:${uid}`)
@@ -189,14 +186,12 @@ export function buildConfigComponents(draft) {
       )
   ));
 
-  // ③ 人員配置按鈕
   rows.push(new ActionRowBuilder().addComponents(
     presetBtn(draft, "five",   "🗡️", "5 人本"),
     presetBtn(draft, "ten",    "⚔️",  "10 人本"),
     presetBtn(draft, "custom", "⚙️",  "自訂人數"),
   ));
 
-  // ④ 確認 / 取消
   rows.push(new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`cfg:confirm:${uid}`)
@@ -243,12 +238,20 @@ export function buildPartyEmbed(party) {
     };
   }
 
+  // 候補名單按職業顯示
+  const subs = party.substitutes ?? { tank: [], healer: [], dps: [] };
+  const subLines = [
+    subs.tank.length   ? `🛡️ 坦：${subs.tank.map(m => `<@${m}>`).join("、")}`     : null,
+    subs.healer.length ? `💚 補：${subs.healer.map(m => `<@${m}>`).join("、")}`   : null,
+    subs.dps.length    ? `⚔️ 輸出：${subs.dps.map(m => `<@${m}>`).join("、")}` : null,
+  ].filter(Boolean);
+
   return new EmbedBuilder()
     .setColor(
       party.status === "disbanded" ? 0x99aab5 :
       party.status === "full"      ? 0xed4245 :
       party.status === "closed"    ? 0x99aab5 :
-      0x57f287  // 招募中 → 綠色
+      0x57f287
     )
     .setTitle(`⚔️　${party.title}`)
     .setDescription(`> 由 <@${party.leader}> 建立`)
@@ -276,9 +279,7 @@ export function buildPartyEmbed(party) {
       slotField("dps"),
       {
         name:  "📋 候補名單",
-        value: party.substitutes.length
-          ? party.substitutes.map((m, i) => `${i + 1}. <@${m}>`).join("\n")
-          : "－",
+        value: subLines.length ? subLines.join("\n") : "－",
       }
     )
     .setFooter({ text: "點下方按鈕報名 • 再按一次可取消" })
@@ -287,6 +288,8 @@ export function buildPartyEmbed(party) {
 
 // ─────────────────────────────────────────────────────
 //  正式隊伍按鈕
+//  Row 1：坦 補 輸出 離隊
+//  Row 2：坦候補 補候補 輸出候補 解散
 // ─────────────────────────────────────────────────────
 export function buildPartyButtons(partyId, disabled = false) {
   const d = disabled;
@@ -296,10 +299,12 @@ export function buildPartyButtons(partyId, disabled = false) {
       mkBtn(`party:join:healer:${partyId}`, "💚", "補",       ButtonStyle.Success,   d),
       mkBtn(`party:join:dps:${partyId}`,    "⚔️",  "輸出",     ButtonStyle.Secondary, d),
       mkBtn(`party:leave:${partyId}`,       "🚪", "離隊",     ButtonStyle.Danger,    d),
-      mkBtn(`party:sub:${partyId}`,         "📋", "候補",     ButtonStyle.Secondary, d),
     ),
     new ActionRowBuilder().addComponents(
-      mkBtn(`party:disband:${partyId}`,     "💣", "解散隊伍", ButtonStyle.Danger,    d),
+      mkBtn(`party:sub:tank:${partyId}`,   "🛡️", "坦候補",   ButtonStyle.Secondary, d),
+      mkBtn(`party:sub:healer:${partyId}`, "💚", "補候補",   ButtonStyle.Secondary, d),
+      mkBtn(`party:sub:dps:${partyId}`,    "⚔️",  "輸出候補", ButtonStyle.Secondary, d),
+      mkBtn(`party:disband:${partyId}`,    "💣", "解散隊伍", ButtonStyle.Danger,    d),
     ),
   ];
 }
