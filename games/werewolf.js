@@ -50,6 +50,27 @@ function getAlivePlayers() { return state.players.filter(p => p.alive); }
 function getAliveByRole(role) { return state.players.filter(p => p.alive && p.role === role); }
 function hasAliveRole(role) { return state.players.some(p => p.alive && p.role === role); }
 function findPlayer(id) { return state.players.find(p => p.id === id); }
+
+// 死亡角色管理
+async function addDeadRole(playerId) {
+  const roleId = process.env.DEAD_ROLE_ID;
+  if (!roleId || !state.guild) return;
+  try {
+    const member = await state.guild.members.fetch(playerId);
+    await member.roles.add(roleId);
+  } catch {}
+}
+
+async function removeAllDeadRoles() {
+  const roleId = process.env.DEAD_ROLE_ID;
+  if (!roleId || !state.guild) return;
+  for (const p of state.players) {
+    try {
+      const member = await state.guild.members.fetch(p.id);
+      await member.roles.remove(roleId);
+    } catch {}
+  }
+}
 function shuffle(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -369,6 +390,7 @@ async function resolveNight(channel) {
       if (victim && victim.alive) {
         victim.alive = false;
         victim.causeOfDeath = 'wolf';
+        await addDeadRole(victim.id);
         deaths.push(victim);
       }
     }
@@ -380,6 +402,7 @@ async function resolveNight(channel) {
     if (victim && victim.alive) {
       victim.alive = false;
       victim.causeOfDeath = 'poison';
+      await addDeadRole(victim.id);
       deaths.push(victim);
     }
   }
@@ -458,6 +481,7 @@ async function handleHunterShot(channel, hunter) {
     if (victim) {
       victim.alive = false;
       victim.causeOfDeath = 'hunter';
+      await addDeadRole(victim.id);
       await channel.send({ embeds: [e(`🏹 **${hunter.name}** 帶走了 **${victim.name}**！`)] });
 
       // 被帶走的如果也是獵人且未被毒（理論上不會，但以防萬一）
@@ -591,6 +615,7 @@ async function resolveVote(channel) {
   const exiled = findPlayer(exiledId);
   exiled.alive = false;
   exiled.causeOfDeath = 'vote';
+  await addDeadRole(exiled.id);
 
   await channel.send({ embeds: [e(`⚖️ **${exiled.name}** 被放逐了！（${maxVotes} 票）`)] });
 
@@ -618,6 +643,7 @@ async function announceWin(channel, side) {
   } else {
     await channel.send({ embeds: [e(`🐺🐺🐺 **狼人陣營勝利！**\n\n好人陣營已無力回天！\n\n📋 **角色公布：**\n${roleList}`)] });
   }
+  await removeAllDeadRoles();
   reset();
 }
 
@@ -690,6 +716,7 @@ const commands = {
     const isAdmin = message.author.id === process.env.ANNOUNCE_ADMIN_ID;
     if (!isHost && !isAdmin) return message.reply({ embeds: [e('❌ 只有主持人或管理員才能取消遊戲！')] });
     const roleList = state.players.filter(p => p.role).map(p => `${p.name} — ${ROLE_NAMES[p.role]}`).join('\n');
+    await removeAllDeadRoles();
     reset();
     message.channel.send({ embeds: [e(`🚫 **${message.member.displayName}** 取消了這局狼人殺！\n\n${roleList ? `📋 角色公布：\n${roleList}` : ''}\n\n輸入 \`!ws\` 可以重新開局！`)] });
   },
@@ -718,6 +745,7 @@ const commands = {
     const player = state.players[pi];
     player.alive = false;
     player.causeOfDeath = 'leave';
+    await addDeadRole(player.id);
 
     // 主持人離開 → 轉移給下一個活著的人
     if (wasHost) {
