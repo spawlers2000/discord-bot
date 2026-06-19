@@ -699,17 +699,38 @@ const commands = {
     const pi = state.players.findIndex(p => p.id === message.author.id);
     if (pi === -1) return message.reply({ embeds: [e('❌ 你沒有加入這局狼人殺！')] });
     const playerName = message.member.displayName;
+    const wasHost = message.author.id === state.hostId;
 
     if (state.phase === 'waiting') {
       state.players.splice(pi, 1);
-      return message.channel.send({ embeds: [e(`👋 **${playerName}** 離開了狼人殺！\n目前玩家（${state.players.length}人）：${state.players.map(p => p.name).join('、') || '無'}`)] });
+      // 主持人離開 → 轉移給下一個人
+      if (wasHost && state.players.length > 0) {
+        state.hostId = state.players[0].id;
+        await message.channel.send({ embeds: [e(`👋 **${playerName}** 離開了狼人殺！\n👑 主持人轉移給 **${state.players[0].name}**\n\n目前玩家（${state.players.length}人）：${state.players.map(p => p.name).join('、')}`)] });
+      } else {
+        await message.channel.send({ embeds: [e(`👋 **${playerName}** 離開了狼人殺！\n目前玩家（${state.players.length}人）：${state.players.map(p => p.name).join('、') || '無'}`)] });
+      }
+      if (state.players.length === 0) reset();
+      return;
     }
 
     // 遊戲中離開 = 死亡
     const player = state.players[pi];
     player.alive = false;
     player.causeOfDeath = 'leave';
-    await message.channel.send({ embeds: [e(`👋 **${playerName}** 離開了遊戲，視為死亡。`)] });
+
+    // 主持人離開 → 轉移給下一個活著的人
+    if (wasHost) {
+      const nextHost = getAlivePlayers().find(p => p.id !== message.author.id);
+      if (nextHost) {
+        state.hostId = nextHost.id;
+        await message.channel.send({ embeds: [e(`👋 **${playerName}** 離開了遊戲，視為死亡。\n👑 主持人轉移給 **${nextHost.name}**`)] });
+      } else {
+        await message.channel.send({ embeds: [e(`👋 **${playerName}** 離開了遊戲，視為死亡。`)] });
+      }
+    } else {
+      await message.channel.send({ embeds: [e(`👋 **${playerName}** 離開了遊戲，視為死亡。`)] });
+    }
 
     const win = checkWin();
     if (win) await announceWin(message.channel, win);
