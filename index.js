@@ -14,12 +14,13 @@ import {
 import { handlePartyButton }   from "./handlers/buttonHandler.js";
 import { startAnnounceScheduler } from "./utils/announceScheduler.js";
 import { connectDB } from "./utils/db.js";
+import { setupGameRouter } from "./games/gameRouter.js";
 
 // ─────────────────────────────────────────────────────
 //  Client
 // ─────────────────────────────────────────────────────
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
 });
 
 // 指令集合
@@ -146,6 +147,7 @@ if (!process.env.TOKEN) {
 }
 
 await connectDB();
+setupGameRouter(client);
 client.login(process.env.TOKEN);
 
 async function safeReply(interaction, content) {
