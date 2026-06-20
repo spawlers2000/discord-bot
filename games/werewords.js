@@ -22,7 +22,7 @@ const state = {
   phase: 'idle', hostId: null, channelId: null, guild: null,
   players: [], word: null,
   order: [], orderIndex: 0, round: 1, maxRounds: 5,
-  mayorId: null, collectors: [], turnTimer: null,
+  mayorId: null, collectors: [], turnTimer: null, turnTimeLimit: 0,
 };
 
 function reset() {
@@ -31,7 +31,7 @@ function reset() {
   Object.assign(state, {
     phase: 'idle', hostId: null, channelId: null, guild: null,
     players: [], word: null, order: [], orderIndex: 0,
-    round: 1, maxRounds: 5, mayorId: null, collectors: [], turnTimer: null,
+    round: 1, maxRounds: 5, mayorId: null, collectors: [], turnTimer: null, turnTimeLimit: 0,
   });
 }
 
@@ -102,17 +102,20 @@ async function startTurn(channel) {
   if (state.turnTimer) { clearTimeout(state.turnTimer); state.turnTimer = null; }
 
   const currentPlayerId = state.order[state.orderIndex];
+  const timeInfo = state.turnTimeLimit > 0 ? ` ｜ ⏱️ 限時 ${state.turnTimeLimit / 60000} 分鐘` : '';
   await channel.send({
-    embeds: [e(`🎯 輪到 <@${currentPlayerId}>！\n\n用 \`!wwg 內容\` 提問或猜詞，或 \`!wwp\` 跳過\n\n📋 第 ${state.round} / ${state.maxRounds} 輪 ｜ ⏱️ 限時 2 分鐘`)],
+    embeds: [e(`🎯 輪到 <@${currentPlayerId}>！\n\n用 \`!wwg 內容\` 提問或猜詞，或 \`!wwp\` 跳過\n\n📋 第 ${state.round} / ${state.maxRounds} 輪${timeInfo}`)],
   });
 
-  // 2 分鐘限時
-  state.turnTimer = setTimeout(async () => {
-    if (state.phase !== 'playing') return;
-    const player = findPlayer(currentPlayerId);
-    await channel.send({ embeds: [e(`⏰ **${player?.name}** 超時，自動跳過！`)] });
-    await advanceTurn(channel);
-  }, 120000);
+  // 限時（0 = 不限時）
+  if (state.turnTimeLimit > 0) {
+    state.turnTimer = setTimeout(async () => {
+      if (state.phase !== 'playing') return;
+      const player = findPlayer(currentPlayerId);
+      await channel.send({ embeds: [e(`⏰ **${player?.name}** 超時，自動跳過！`)] });
+      await advanceTurn(channel);
+    }, state.turnTimeLimit);
+  }
 }
 
 // 推進回合
@@ -279,6 +282,7 @@ const commands = {
   async wwj(message) {
     if (state.phase !== 'waiting') return message.reply({ embeds: [e('❌ 目前沒有開放加入的狼人真言局！')] });
     if (state.players.find(p => p.id === message.author.id)) return message.reply({ embeds: [e('❌ 你已經加入了！')] });
+    if (state.players.length >= 10) return message.reply({ embeds: [e('❌ 已滿 10 人！')] });
     state.players.push({ id: message.author.id, name: message.member.displayName, role: null });
     const names = state.players.map(p => p.name).join('、');
     message.channel.send({ embeds: [e(`✅ **${message.member.displayName}** 加入狼人真言！\n目前玩家（${state.players.length}人）：${names}`)] });
@@ -298,6 +302,39 @@ const commands = {
     const mayor = state.players.find(p => p.role === 'mayor');
     state.mayorId = mayor.id;
     state.guild = message.guild;
+
+    // 主持人選擇限時
+    const tsTime = Date.now();
+    const timeRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`timelimit_${tsTime}_0`).setLabel('⏳ 不限時').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`timelimit_${tsTime}_120`).setLabel('⏱️ 2 分鐘').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`timelimit_${tsTime}_180`).setLabel('⏱️ 3 分鐘').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`timelimit_${tsTime}_300`).setLabel('⏱️ 5 分鐘').setStyle(ButtonStyle.Primary),
+    );
+    const timeMsg = await message.channel.send({
+      embeds: [e(`⏱️ **主持人請選擇每回合限時：**`)],
+      components: [timeRow],
+    });
+
+    state.turnTimeLimit = await new Promise((resolve) => {
+      const collector = timeMsg.createMessageComponentCollector({
+        filter: i => i.customId.startsWith(`timelimit_${tsTime}_`) && i.user.id === state.hostId,
+        max: 1, time: 60000,
+      });
+      collector.on('collect', async (i) => {
+        const seconds = parseInt(i.customId.replace(`timelimit_${tsTime}_`, ''));
+        const label = seconds === 0 ? '不限時' : `${seconds / 60} 分鐘`;
+        await i.update({ embeds: [e(`⏱️ 每回合限時：**${label}**`)], components: [] });
+        resolve(seconds * 1000);
+      });
+      collector.on('end', (c) => {
+        if (c.size === 0) {
+          timeMsg.edit({ embeds: [e('⏱️ 主持人超時，預設不限時')], components: [] }).catch(() => {});
+          resolve(0);
+        }
+      });
+      state.collectors.push(collector);
+    });
 
     // 頻道內讓村長設定詞彙
     const ts = Date.now();
