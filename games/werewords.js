@@ -22,15 +22,16 @@ const state = {
   phase: 'idle', hostId: null, channelId: null, guild: null,
   players: [], word: null,
   order: [], orderIndex: 0, round: 1, maxRounds: 5,
-  mayorId: null, collectors: [],
+  mayorId: null, collectors: [], turnTimer: null,
 };
 
 function reset() {
   state.collectors.forEach(c => { try { c.stop(); } catch {} });
+  if (state.turnTimer) { clearTimeout(state.turnTimer); state.turnTimer = null; }
   Object.assign(state, {
     phase: 'idle', hostId: null, channelId: null, guild: null,
     players: [], word: null, order: [], orderIndex: 0,
-    round: 1, maxRounds: 5, mayorId: null, collectors: [],
+    round: 1, maxRounds: 5, mayorId: null, collectors: [], turnTimer: null,
   });
 }
 
@@ -98,10 +99,20 @@ async function showMayorPanel(channel, content, askerName) {
 // ─── 開始回合 ───
 async function startTurn(channel) {
   if (state.phase !== 'playing') return;
+  if (state.turnTimer) { clearTimeout(state.turnTimer); state.turnTimer = null; }
+
   const currentPlayerId = state.order[state.orderIndex];
   await channel.send({
-    embeds: [e(`🎯 輪到 <@${currentPlayerId}>！\n\n用 \`!wwg 內容\` 提問或猜詞，或 \`!wwp\` 跳過\n\n📋 第 ${state.round} / ${state.maxRounds} 輪`)],
+    embeds: [e(`🎯 輪到 <@${currentPlayerId}>！\n\n用 \`!wwg 內容\` 提問或猜詞，或 \`!wwp\` 跳過\n\n📋 第 ${state.round} / ${state.maxRounds} 輪 ｜ ⏱️ 限時 2 分鐘`)],
   });
+
+  // 2 分鐘限時
+  state.turnTimer = setTimeout(async () => {
+    if (state.phase !== 'playing') return;
+    const player = findPlayer(currentPlayerId);
+    await channel.send({ embeds: [e(`⏰ **${player?.name}** 超時，自動跳過！`)] });
+    await advanceTurn(channel);
+  }, 120000);
 }
 
 // 推進回合
@@ -385,6 +396,9 @@ const commands = {
     const content = args.join(' ').trim();
     if (!content) return message.reply({ embeds: [e('❌ 請輸入內容！例如 `!wwg 是動物嗎` 或 `!wwg 蘋果`')] });
 
+    // 清除計時器
+    if (state.turnTimer) { clearTimeout(state.turnTimer); state.turnTimer = null; }
+
     // 顯示村長回答面板
     const answer = await showMayorPanel(message.channel, content, findPlayer(currentPlayerId).name);
 
@@ -403,6 +417,7 @@ const commands = {
     if (state.phase !== 'playing') return;
     const currentPlayerId = state.order[state.orderIndex];
     if (message.author.id !== currentPlayerId) return;
+    if (state.turnTimer) { clearTimeout(state.turnTimer); state.turnTimer = null; }
     await message.channel.send({ embeds: [e(`⏭️ **${findPlayer(currentPlayerId).name}** 跳過了這回合。`)] });
     await advanceTurn(message.channel);
   },
@@ -411,7 +426,8 @@ const commands = {
     if (state.phase === 'idle') return message.reply({ embeds: [e('❌ 目前沒有進行中的狼人真言局！')] });
     const isHost = message.author.id === state.hostId;
     const isAdmin = message.author.id === process.env.ANNOUNCE_ADMIN_ID;
-    if (!isHost && !isAdmin) return message.reply({ embeds: [e('❌ 只有主持人或管理員才能取消！')] });
+    const isPlayer = state.players.some(p => p.id === message.author.id);
+    if (!isHost && !isAdmin && !isPlayer) return message.reply({ embeds: [e('❌ 只有參加的玩家才能取消遊戲！')] });
     const roleList = state.players.filter(p => p.role).map(p => `${p.name} — ${ROLE_NAMES[p.role]}`).join('\n');
     const wordInfo = state.word ? `\n🔑 答案是：**${state.word}**` : '';
     reset();
