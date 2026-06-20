@@ -356,7 +356,7 @@ const commands = {
       try {
         const member = await message.guild.members.fetch(p.id);
         if (p.role === 'mayor') {
-          // 村長已經在頻道看到 ephemeral 了
+          await member.send({ embeds: [e(`你的角色是：${ROLE_NAMES[p.role]}\n\n🔑 魔法咒語是：**${state.word}**`)] });
         } else if (p.role === 'wolf' || p.role === 'seer') {
           await member.send({ embeds: [e(`你的角色是：${ROLE_NAMES[p.role]}\n\n🔑 魔法咒語是：**${state.word}**`)] });
         } else {
