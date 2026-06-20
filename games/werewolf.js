@@ -54,11 +54,11 @@ function findPlayer(id) { return state.players.find(p => p.id === id); }
 // 死亡角色管理
 async function addDeadRole(playerId) {
   const roleId = process.env.DEAD_ROLE_ID;
-  if (!roleId || !state.guild) return;
+  if (!roleId || !state.guild) { console.log('[狼人殺] DEAD_ROLE_ID 未設定，跳過死亡角色'); return; }
   try {
     const member = await state.guild.members.fetch(playerId);
     await member.roles.add(roleId);
-  } catch {}
+  } catch (err) { console.error('[狼人殺] 無法加上死亡角色:', err.message); }
 }
 
 async function removeAllDeadRoles() {
@@ -68,7 +68,7 @@ async function removeAllDeadRoles() {
     try {
       const member = await state.guild.members.fetch(p.id);
       await member.roles.remove(roleId);
-    } catch {}
+    } catch (err) { console.error('[狼人殺] 無法移除死亡角色:', err.message); }
   }
 }
 function shuffle(arr) {
@@ -111,7 +111,7 @@ function buildPlayerButtons(players, prefix, ts) {
 }
 
 // 等待玩家透過 DM 按鈕選擇
-async function awaitChoice(playerId, embed, targets, prefix, extraButtons) {
+async function awaitChoice(playerId, embed, targets, prefix, extraButtons, timeout = 600000) {
   const member = await state.guild.members.fetch(playerId);
   const ts = Date.now();
   const rows = buildPlayerButtons(targets, prefix, ts);
@@ -133,7 +133,7 @@ async function awaitChoice(playerId, embed, targets, prefix, extraButtons) {
   return new Promise((resolve) => {
     const collector = msg.createMessageComponentCollector({
       filter: i => i.customId.startsWith(`${prefix}_${ts}_`),
-      max: 1, time: 600000,
+      max: 1, time: timeout,
     });
     collector.on('collect', async (i) => {
       const choiceId = i.customId.replace(`${prefix}_${ts}_`, '');
@@ -185,14 +185,14 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ─── 守衛 ───
 async function guardPhase(channel) {
-  await channel.send({ embeds: [e('🛡️ 守衛正在行動...')] });
+  await channel.send({ embeds: [e('🛡️ 守衛正在行動...（限時 2 分鐘）')] });
   const guard = getAliveByRole('guard')[0];
   const targets = getAlivePlayers().filter(p => p.id !== state.lastGuardTarget);
 
   const choice = await awaitChoice(
     guard.id,
-    e(`🛡️ **你是守衛**\n${state.lastGuardTarget ? `上一晚守了 **${findPlayer(state.lastGuardTarget)?.name}**，本晚不能再守同一人。` : ''}\n\n選擇要保護的人：`),
-    targets, 'guard', null
+    e(`🛡️ **你是守衛**\n${state.lastGuardTarget ? `上一晚守了 **${findPlayer(state.lastGuardTarget)?.name}**，本晚不能再守同一人。` : ''}\n\n選擇要保護的人（限時 2 分鐘）：`),
+    targets, 'guard', null, 120000
   );
 
   state.guardTarget = choice;
@@ -203,7 +203,7 @@ async function guardPhase(channel) {
 
 // ─── 狼人 ───
 async function wolfPhase(channel) {
-  await channel.send({ embeds: [e('🐺 狼人正在行動...')] });
+  await channel.send({ embeds: [e('🐺 狼人正在行動...（限時 3 分鐘）')] });
   const wolves = getAliveByRole('wolf');
   const targets = getAlivePlayers();
 
@@ -217,8 +217,8 @@ async function wolfPhase(channel) {
     const promises = wolves.map(wolf =>
       awaitChoice(
         wolf.id,
-        e(`🐺 **你是狼人**\n${wolfTeamInfo(wolf.id)}\n\n選擇要擊殺的目標：`),
-        targets, 'wolf', null
+        e(`🐺 **你是狼人**\n${wolfTeamInfo(wolf.id)}\n\n選擇要擊殺的目標（限時 3 分鐘）：`),
+        targets, 'wolf', null, 180000
       ).then(choice => {
         state.wolfVotes.set(wolf.id, choice);
       })
@@ -259,7 +259,7 @@ async function wolfPhase(channel) {
 
 // ─── 女巫 ───
 async function witchPhase(channel) {
-  await channel.send({ embeds: [e('🧪 女巫正在行動...')] });
+  await channel.send({ embeds: [e('🧪 女巫正在行動...（限時 2 分鐘）')] });
   const witch = getAliveByRole('witch')[0];
 
   // 判斷狼刀是否被守衛擋下
@@ -329,7 +329,7 @@ async function witchPhase(channel) {
   const choice = await new Promise((resolve) => {
     const collector = msg.createMessageComponentCollector({
       filter: i => i.customId.startsWith(`witch_${ts}_`),
-      max: 1, time: 600000,
+      max: 1, time: 120000,
     });
     collector.on('collect', async (i) => {
       await i.update({ components: [] });
@@ -356,14 +356,14 @@ async function witchPhase(channel) {
 
 // ─── 預言家 ───
 async function seerPhase(channel) {
-  await channel.send({ embeds: [e('🔮 預言家正在行動...')] });
+  await channel.send({ embeds: [e('🔮 預言家正在行動...（限時 2 分鐘）')] });
   const seer = getAliveByRole('seer')[0];
   const targets = getAlivePlayers().filter(p => p.id !== seer.id);
 
   const choice = await awaitChoice(
     seer.id,
-    e('🔮 **你是預言家**\n\n選擇要查驗的人：'),
-    targets, 'seer', null
+    e('🔮 **你是預言家**\n\n選擇要查驗的人（限時 2 分鐘）：'),
+    targets, 'seer', null, 120000
   );
 
   if (choice) {
@@ -466,14 +466,15 @@ async function startDay(channel) {
 
 // ─── 獵人開槍 ───
 async function handleHunterShot(channel, hunter) {
-  await channel.send({ embeds: [e(`🏹 **${hunter.name}** 發動了獵人技能！選擇要帶走的人...`)] });
   const targets = getAlivePlayers();
   if (targets.length === 0) return;
+
+  await channel.send({ embeds: [e('🏹 有人發動了技能，正在選擇目標...')] });
 
   const choice = await awaitChoice(
     hunter.id,
     e('🏹 **你是獵人，你死了！**\n\n選擇要帶走的人：'),
-    targets, 'hunter_shot', null
+    targets, 'hunter_shot', null, 120000
   );
 
   if (choice) {
@@ -482,13 +483,14 @@ async function handleHunterShot(channel, hunter) {
       victim.alive = false;
       victim.causeOfDeath = 'hunter';
       await addDeadRole(victim.id);
-      await channel.send({ embeds: [e(`🏹 **${hunter.name}** 帶走了 **${victim.name}**！`)] });
+      await channel.send({ embeds: [e(`🏹 **${victim.name}** 被帶走了！`)] });
 
-      // 被帶走的如果也是獵人且未被毒（理論上不會，但以防萬一）
       if (victim.role === 'hunter' && victim.causeOfDeath !== 'poison') {
         await handleHunterShot(channel, victim);
       }
     }
+  } else {
+    await channel.send({ embeds: [e('🏹 技能超時，無人被帶走。')] });
   }
 }
 
