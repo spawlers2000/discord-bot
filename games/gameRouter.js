@@ -1,6 +1,7 @@
 import bingoCommands from './bingo.js';
 import bombCommands from './bomb.js';
 import werewolfCommands from './werewolf.js';
+import werewordsCommands from './werewords.js';
 
 // 賓果指令對應
 const bingoMap = { bs: 'bs', bj: 'bj', bb: 'bb', bc: 'bc', bl: 'bl', bq: 'bq', br: 'br' };
@@ -8,6 +9,8 @@ const bingoMap = { bs: 'bs', bj: 'bj', bb: 'bb', bc: 'bc', bl: 'bl', bq: 'bq', b
 const bombMap = { zs: 'zs', zj: 'zj', zb: 'zb', zg: 'zg', zl: 'zl', zq: 'zq', zr: 'zr' };
 // 狼人殺指令對應
 const wolfMap = { ws: 'ws', wj: 'wj', wb: 'wb', wq: 'wq', wl: 'wl' };
+// 狼人真言指令對應
+const wwMap = { wws: 'wws', wwj: 'wwj', wwb: 'wwb', wwg: 'wwg', wwp: 'wwp', wwq: 'wwq', wwl: 'wwl' };
 
 export function setupGameRouter(client) {
   client.on('messageCreate', async (message) => {
@@ -38,6 +41,14 @@ export function setupGameRouter(client) {
         const channelId = process.env.WEREWOLF_CHANNEL_ID;
         if (channelId && message.channel.id !== channelId) return;
         await werewolfCommands[cmd](message, args);
+        return;
+      }
+
+      // 狼人真言指令
+      if (wwMap[cmd]) {
+        const channelId = process.env.WEREWORDS_CHANNEL_ID;
+        if (channelId && message.channel.id !== channelId) return;
+        await werewordsCommands[cmd](message, args);
         return;
       }
     } catch (err) {
