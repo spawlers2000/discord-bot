@@ -102,12 +102,20 @@ async function startTurn(channel) {
   if (state.turnTimer) { clearTimeout(state.turnTimer); state.turnTimer = null; }
 
   const currentPlayerId = state.order[state.orderIndex];
-  const timeInfo = state.turnTimeLimit > 0 ? ` ｜ ⏱️ 限時 ${state.turnTimeLimit / 60000} 分鐘` : '';
+  const mayor = findPlayer(state.mayorId);
+  const timeInfo = state.turnTimeLimit > 0 ? ` ｜ ⏱️ ${state.turnTimeLimit / 60000} 分鐘` : '';
+
+  // 順序列表，標記目前輪到的人
+  const orderList = state.order.map((id, i) => {
+    const p = findPlayer(id);
+    const arrow = id === currentPlayerId ? '➡️ ' : '　　';
+    return `${arrow}${i + 1}. ${p.name}`;
+  }).join('\n');
+
   await channel.send({
-    embeds: [e(`🎯 輪到 <@${currentPlayerId}>！\n\n用 \`!wwg 內容\` 提問或猜詞，或 \`!wwp\` 跳過\n\n📋 第 ${state.round} / ${state.maxRounds} 輪${timeInfo}`)],
+    embeds: [e(`👑 村長：**${mayor.name}**\n\n📋 提問順序：\n${orderList}\n\n🎯 輪到 <@${currentPlayerId}>！\n用 \`!wwg 內容\` 提問或猜詞，或 \`!wwp\` 跳過\n\n第 ${state.round} / ${state.maxRounds} 輪${timeInfo}`)],
   });
 
-  // 限時（0 = 不限時）
   if (state.turnTimeLimit > 0) {
     state.turnTimer = setTimeout(async () => {
       if (state.phase !== 'playing') return;
