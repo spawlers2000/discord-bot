@@ -31,8 +31,18 @@ async function addBomb(userId, name) {
   await BombRecord.findOneAndUpdate({ discordId: userId }, { $inc: { count: 1 }, $set: { name } }, { upsert: true, new: true });
 }
 
+async function addParticipation(players) {
+  for (const p of players) {
+    await BombRecord.findOneAndUpdate({ discordId: p.id }, { $inc: { played: 1 }, $set: { name: p.name } }, { upsert: true, new: true });
+  }
+}
+
 async function getRanking(limit = 10) {
   return BombRecord.find().sort({ count: -1 }).limit(limit).lean();
+}
+
+async function getFullRanking(limit = 10) {
+  return BombRecord.find({ played: { $gt: 0 } }).sort({ played: -1 }).limit(limit).lean();
 }
 
 // ─── 指令 ───
@@ -80,6 +90,7 @@ const commands = {
 
     if (num === state.secret) {
       await addBomb(message.author.id, player.name);
+      await addParticipation(state.players);
       await message.channel.send({ embeds: [e(`💥💥💥 **爆炸！！！**\n\n**${player.name}** 踩到了終極密碼 **${state.secret}**！\n\n💀 ${player.name} 爆炸 +1\n\n輸入 \`!zr\` 查看爆炸排行榜\n輸入 \`!zs\` 開始新一局！`)] });
       reset(); return;
     }
@@ -92,6 +103,7 @@ const commands = {
 
     if (state.min === state.max) {
       await addBomb(nextId, nextPlayer.name);
+      await addParticipation(state.players);
       await message.channel.send({ embeds: [e(`🔢 **${player.name}** 猜了 **${num}**\n\n📏 範圍縮小為：**${state.min} ~ ${state.max}**\n\n💥💥💥 **爆炸！！！**\n\n**${nextPlayer.name}** 無路可逃，踩到終極密碼 **${state.secret}**！\n\n💀 ${nextPlayer.name} 爆炸 +1\n\n輸入 \`!zr\` 查看爆炸排行榜\n輸入 \`!zs\` 開始新一局！`)] });
       reset(); return;
     }
@@ -111,6 +123,7 @@ const commands = {
     }
 
     await addBomb(message.author.id, playerName);
+    await addParticipation(state.players);
     await message.channel.send({ embeds: [e(`💥 **${playerName}** 中途逃跑，視為爆炸！\n\n💀 ${playerName} 爆炸 +1\n密碼是 **${state.secret}**\n\n輸入 \`!zr\` 查看爆炸排行榜\n輸入 \`!zs\` 開始新一局！`)] });
     reset();
   },
@@ -130,6 +143,17 @@ const commands = {
     const medals = ['🥇', '🥈', '🥉'];
     const list = ranking.map((entry, i) => `${medals[i] || `${i + 1}.`} ${entry.name} — 💥 ${entry.count} 次`).join('\n');
     message.channel.send({ embeds: [e(`💣 **終極密碼爆炸排行榜**\n\n${list}`)] });
+  },
+
+  async zp(message) {
+    const ranking = await getFullRanking();
+    if (!ranking.length) return message.reply({ embeds: [e('📊 還沒有人玩過，快來玩 `!zs`！')] });
+    const medals = ['🥇', '🥈', '🥉'];
+    const list = ranking.map((entry, i) => {
+      const rate = entry.played > 0 ? Math.round((entry.count / entry.played) * 100) : 0;
+      return `${medals[i] || `${i + 1}.`} ${entry.name} — 🎮 ${entry.played} 場 ｜ 💥 ${entry.count} 爆 ｜ 💀 ${rate}%`;
+    }).join('\n');
+    message.channel.send({ embeds: [e(`💣 **終極密碼綜合排行榜**\n\n${list}\n\n🎮 參與場數 ｜ 💥 爆炸次數 ｜ 💀 爆炸率`)] });
   },
 };
 
