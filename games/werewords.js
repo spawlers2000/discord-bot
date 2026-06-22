@@ -344,6 +344,9 @@ const commands = {
       state.collectors.push(collector);
     });
 
+    // 如果等待期間被取消了，中止
+    if (state.phase === 'idle') return;
+
     // 頻道內讓村長設定詞彙
     const ts = Date.now();
     const setupRow = new ActionRowBuilder().addComponents(
@@ -406,6 +409,9 @@ const commands = {
     });
 
     state.word = word;
+
+    // 如果等待期間被取消了，中止
+    if (state.phase === 'idle') return;
 
     // 私訊角色 + 詞彙
     for (const p of state.players) {
