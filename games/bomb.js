@@ -32,8 +32,14 @@ async function addBomb(userId, name) {
 }
 
 async function addParticipation(players) {
+  console.log('[終極密碼] 記錄參與:', players.map(p => p.name).join(', '));
   for (const p of players) {
-    await BombRecord.findOneAndUpdate({ discordId: p.id }, { $inc: { played: 1 }, $set: { name: p.name } }, { upsert: true, new: true });
+    const result = await BombRecord.findOneAndUpdate(
+      { discordId: p.id },
+      { $inc: { played: 1 }, $set: { name: p.name } },
+      { upsert: true, new: true }
+    );
+    console.log('[終極密碼] 更新結果:', p.name, 'played:', result?.played, 'count:', result?.count);
   }
 }
 
