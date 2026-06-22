@@ -84,6 +84,7 @@ const commands = {
   },
 
   async zg(message, args) {
+    console.log('[終極密碼] zg 被呼叫 by', message.author.username);
     if (state.phase !== 'playing') return message.reply({ embeds: [e('❌ 目前沒有進行中的終極密碼局！')] });
     const player = state.players.find(p => p.id === message.author.id);
     if (!player) return message.reply({ embeds: [e('❌ 你沒有加入這局終極密碼！')] });
