@@ -91,7 +91,7 @@ const commands = {
     if (num === state.secret) {
       await addBomb(message.author.id, player.name);
       await addParticipation(state.players);
-      await message.channel.send({ embeds: [e(`💥💥💥 **爆炸！！！**\n\n**${player.name}** 踩到了終極密碼 **${state.secret}**！\n\n💀 ${player.name} 爆炸 +1\n\n輸入 \`!zr\` 查看爆炸排行榜\n輸入 \`!zs\` 開始新一局！`)] });
+      await message.channel.send({ embeds: [e(`💥💥💥 **爆炸！！！**\n\n<@${message.author.id}> **${player.name}** 踩到了終極密碼 **${state.secret}**！\n\n💀 **${player.name}** 爆炸 +1\n\n輸入 \`!zr\` 查看爆炸排行榜\n輸入 \`!zs\` 開始新一局！`)] });
       reset(); return;
     }
 
@@ -104,7 +104,7 @@ const commands = {
     if (state.min === state.max) {
       await addBomb(nextId, nextPlayer.name);
       await addParticipation(state.players);
-      await message.channel.send({ embeds: [e(`🔢 **${player.name}** 猜了 **${num}**\n\n📏 範圍縮小為：**${state.min} ~ ${state.max}**\n\n💥💥💥 **爆炸！！！**\n\n**${nextPlayer.name}** 無路可逃，踩到終極密碼 **${state.secret}**！\n\n💀 ${nextPlayer.name} 爆炸 +1\n\n輸入 \`!zr\` 查看爆炸排行榜\n輸入 \`!zs\` 開始新一局！`)] });
+      await message.channel.send({ embeds: [e(`🔢 **${player.name}** 猜了 **${num}**\n\n📏 範圍縮小為：**${state.min} ~ ${state.max}**\n\n💥💥💥 **爆炸！！！**\n\n<@${nextId}> **${nextPlayer.name}** 無路可逃，踩到終極密碼 **${state.secret}**！\n\n💀 **${nextPlayer.name}** 爆炸 +1\n\n輸入 \`!zr\` 查看爆炸排行榜\n輸入 \`!zs\` 開始新一局！`)] });
       reset(); return;
     }
 

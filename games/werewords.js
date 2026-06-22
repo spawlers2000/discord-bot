@@ -344,6 +344,9 @@ const commands = {
       state.collectors.push(collector);
     });
 
+    // 如果等待期間被取消了，中止
+    if (state.phase === 'idle') return;
+
     // 頻道內讓村長設定詞彙
     const ts = Date.now();
     const setupRow = new ActionRowBuilder().addComponents(
@@ -406,6 +409,23 @@ const commands = {
     });
 
     state.word = word;
+
+    // 如果等待期間被取消了，中止
+    if (state.phase === 'idle') return;
+
+    // 如果設定期間有人離開，重新分配角色
+    if (state.players.length < 4) {
+      reset();
+      return message.channel.send({ embeds: [e('❌ 玩家不足 4 人，遊戲取消！')] });
+    }
+    const currentConfig = getRoleConfig(state.players.length);
+    const newRoles = [];
+    for (const [role, num] of Object.entries(currentConfig)) { for (let i = 0; i < num; i++) newRoles.push(role); }
+    const newShuffled = shuffle(newRoles);
+    state.players.forEach((p, i) => { p.role = newShuffled[i]; });
+
+    const mayor = state.players.find(p => p.role === 'mayor');
+    state.mayorId = mayor.id;
 
     // 私訊角色 + 詞彙
     for (const p of state.players) {
