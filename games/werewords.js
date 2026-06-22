@@ -424,8 +424,8 @@ const commands = {
     const newShuffled = shuffle(newRoles);
     state.players.forEach((p, i) => { p.role = newShuffled[i]; });
 
-    const mayor = state.players.find(p => p.role === 'mayor');
-    state.mayorId = mayor.id;
+    const newMayor = state.players.find(p => p.role === 'mayor');
+    state.mayorId = newMayor.id;
 
     // 私訊角色 + 詞彙
     for (const p of state.players) {
@@ -447,8 +447,9 @@ const commands = {
     state.order = shuffle(state.players.filter(p => p.role !== 'mayor').map(p => p.id));
     state.orderIndex = 0; state.round = 1; state.phase = 'playing';
 
+    const finalMayor = findPlayer(state.mayorId);
     const orderNames = state.order.map((id, i) => `${i + 1}. ${findPlayer(id).name}`).join('\n');
-    await message.channel.send({ embeds: [e(`🔮 **狼人真言開始！共 ${state.players.length} 人**\n\n👑 村長：**${mayor.name}**\n\n📋 提問順序：\n${orderNames}\n\n共 ${state.maxRounds} 輪機會，開始！`)] });
+    await message.channel.send({ embeds: [e(`🔮 **狼人真言開始！共 ${state.players.length} 人**\n\n👑 村長：**${finalMayor.name}**\n\n📋 提問順序：\n${orderNames}\n\n共 ${state.maxRounds} 輪機會，開始！`)] });
     await startTurn(message.channel);
   },
 
