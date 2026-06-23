@@ -1,41 +1,76 @@
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 
 const GOLD = 0xFFD700;
 const e = (text) => new EmbedBuilder().setColor(GOLD).setDescription(text);
 
-// ─── 內建詞庫 ───
-const DEFAULT_WORDS = [
-  '蘋果','月亮','咖啡','恐龍','鑽石','雨傘','彩虹','鋼琴','巧克力','企鵝',
-  '火山','機器人','外星人','太陽眼鏡','泡麵','棒球','聖誕節','章魚','瀑布','電梯',
-  '冰淇淋','飛碟','木乃伊','溜滑梯','氣球','摩天輪','仙人掌','藍芽','漢堡','金字塔',
-  '北極熊','橡皮擦','望遠鏡','指南針','蘑菇','稻草人','魔術師','珊瑚','口紅','吊橋',
-  '貓頭鷹','滅火器','鬧鐘','日記本','螢火蟲','迷宮','拼圖','蹺蹺板','竹蜻蜓','風箏',
-  '手術刀','降落傘','樹懶','考古學家','潛水艇','高跟鞋','打字機','龍捲風','防毒面具','萬花筒',
-];
+// ─── 角色配置 ───
+const ROLE_CONFIGS = {
+  6:  { wolf: 2, seer: 1, witch: 1, hunter: 0, guard: 0, villager: 2 },
+  7:  { wolf: 2, seer: 1, witch: 1, hunter: 0, guard: 0, villager: 3 },
+  8:  { wolf: 3, seer: 1, witch: 1, hunter: 1, guard: 0, villager: 2 },
+  9:  { wolf: 3, seer: 1, witch: 1, hunter: 1, guard: 0, villager: 3 },
+  10: { wolf: 3, seer: 1, witch: 1, hunter: 1, guard: 1, villager: 3 },
+};
 
 const ROLE_NAMES = {
-  mayor: '👑 村長', wolf: '🐺 狼人', seer: '🔮 先知', villager: '👤 村民',
+  wolf: '🐺 狼人', seer: '🔮 預言家', witch: '🧪 女巫',
+  hunter: '🏹 獵人', guard: '🛡️ 守衛', villager: '👤 村民',
 };
 
 // ─── 狀態 ───
 const state = {
   phase: 'idle', hostId: null, channelId: null, guild: null,
-  players: [], word: null,
-  order: [], orderIndex: 0, round: 1, maxRounds: 5,
-  mayorId: null, collectors: [], turnTimer: null, turnTimeLimit: 0,
+  players: [], night: 0,
+  wolfTarget: null, wolfVotes: new Map(),
+  guardTarget: null, lastGuardTarget: null,
+  witchHealUsed: false, witchPoisonUsed: false,
+  witchHealed: false, witchPoisonTarget: null,
+  nightDeaths: [],
+  votes: new Map(), voteMsg: null, voteCollector: null,
+  collectors: [],
 };
 
 function reset() {
   state.collectors.forEach(c => { try { c.stop(); } catch {} });
-  if (state.turnTimer) { clearTimeout(state.turnTimer); state.turnTimer = null; }
+  if (state.voteCollector) try { state.voteCollector.stop(); } catch {}
   Object.assign(state, {
     phase: 'idle', hostId: null, channelId: null, guild: null,
-    players: [], word: null, order: [], orderIndex: 0,
-    round: 1, maxRounds: 5, mayorId: null, collectors: [], turnTimer: null, turnTimeLimit: 0,
+    players: [], night: 0,
+    wolfTarget: null, wolfVotes: new Map(),
+    guardTarget: null, lastGuardTarget: null,
+    witchHealUsed: false, witchPoisonUsed: false,
+    witchHealed: false, witchPoisonTarget: null,
+    nightDeaths: [], votes: new Map(), voteMsg: null, voteCollector: null,
+    collectors: [],
   });
 }
 
+// ─── 工具函數 ───
+function getAlivePlayers() { return state.players.filter(p => p.alive); }
+function getAliveByRole(role) { return state.players.filter(p => p.alive && p.role === role); }
+function hasAliveRole(role) { return state.players.some(p => p.alive && p.role === role); }
 function findPlayer(id) { return state.players.find(p => p.id === id); }
+
+// 死亡角色管理
+async function addDeadRole(playerId) {
+  const roleId = process.env.DEAD_ROLE_ID;
+  if (!roleId || !state.guild) { console.log('[狼人殺] DEAD_ROLE_ID 未設定，跳過死亡角色'); return; }
+  try {
+    const member = await state.guild.members.fetch(playerId);
+    await member.roles.add(roleId);
+  } catch (err) { console.error('[狼人殺] 無法加上死亡角色:', err.message); }
+}
+
+async function removeAllDeadRoles() {
+  const roleId = process.env.DEAD_ROLE_ID;
+  if (!roleId || !state.guild) return;
+  for (const p of state.players) {
+    try {
+      const member = await state.guild.members.fetch(p.id);
+      await member.roles.remove(roleId);
+    } catch (err) { console.error('[狼人殺] 無法移除死亡角色:', err.message); }
+  }
+}
 function shuffle(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -45,474 +80,690 @@ function shuffle(arr) {
   return a;
 }
 
-function getRoleConfig(count) {
-  if (count <= 6) return { mayor: 1, wolf: 1, seer: 1, villager: count - 3 };
-  return { mayor: 1, wolf: 2, seer: 1, villager: count - 4 };
+function checkWin() {
+  const alive = getAlivePlayers();
+  const wolves = alive.filter(p => p.role === 'wolf');
+  const goods = alive.filter(p => p.role !== 'wolf');
+  const specials = goods.filter(p => !['villager'].includes(p.role));
+
+  if (wolves.length === 0) return 'good';
+  if (goods.length === 0) return 'wolf';
+  if (specials.length === 0) return 'wolf';
+  return null;
 }
 
-// ─── 村長回答面板（含「正確」按鈕）───
-async function showMayorPanel(channel, content, askerName) {
-  const ts = Date.now();
-  const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`mra_${ts}_yes`).setLabel('✅ 是').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`mra_${ts}_no`).setLabel('❌ 否').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`mra_${ts}_close`).setLabel('🤏 接近了').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`mra_${ts}_far`).setLabel('🚫 差很多').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`mra_${ts}_unsure`).setLabel('❓ 不確定').setStyle(ButtonStyle.Secondary),
-  );
-  const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`mra_${ts}_correct`).setLabel('🎯 正確！').setStyle(ButtonStyle.Primary),
-  );
+function buildPlayerButtons(players, prefix, ts) {
+  const rows = [];
+  for (let i = 0; i < players.length; i += 5) {
+    const row = new ActionRowBuilder();
+    const chunk = players.slice(i, i + 5);
+    for (const p of chunk) {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${prefix}_${ts}_${p.id}`)
+          .setLabel(p.name)
+          .setStyle(ButtonStyle.Secondary)
+      );
+    }
+    rows.push(row);
+  }
+  return rows;
+}
 
-  const msg = await channel.send({
-    embeds: [e(`💬 **${askerName}**：「${content}」\n\n👑 村長請用按鈕回答：`)],
-    components: [row1, row2],
-  });
+// 等待玩家透過 DM 按鈕選擇
+async function awaitChoice(playerId, embed, targets, prefix, extraButtons, timeout = 600000) {
+  const member = await state.guild.members.fetch(playerId);
+  const ts = Date.now();
+  const rows = buildPlayerButtons(targets, prefix, ts);
+  if (extraButtons) {
+    const extraRow = new ActionRowBuilder();
+    for (const btn of extraButtons) {
+      extraRow.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${prefix}_${ts}_${btn.id}`)
+          .setLabel(btn.label)
+          .setStyle(btn.style || ButtonStyle.Primary)
+      );
+    }
+    rows.push(extraRow);
+  }
+
+  const msg = await member.send({ embeds: [embed], components: rows });
 
   return new Promise((resolve) => {
     const collector = msg.createMessageComponentCollector({
-      filter: i => i.customId.startsWith(`mra_${ts}_`) && i.user.id === state.mayorId,
-      max: 1, time: 300000,
+      filter: i => i.customId.startsWith(`${prefix}_${ts}_`),
+      max: 1, time: timeout,
     });
     collector.on('collect', async (i) => {
-      const answer = i.customId.replace(`mra_${ts}_`, '');
-      const labels = {
-        yes: '✅ 是', no: '❌ 否', close: '🤏 接近了',
-        far: '🚫 差很多', unsure: '❓ 不確定', correct: '🎯 正確！',
-      };
-      await i.update({
-        embeds: [e(`💬 **${askerName}**：「${content}」\n\n👑 村長回答：**${labels[answer]}**`)],
-        components: [],
-      });
-      resolve(answer);
+      const choiceId = i.customId.replace(`${prefix}_${ts}_`, '');
+      await i.update({ components: [] });
+      resolve(choiceId);
     });
-    collector.on('end', (c) => {
-      if (c.size === 0) {
-        msg.edit({ embeds: [e(`💬 **${askerName}**：「${content}」\n\n👑 村長未回答（超時）`)], components: [] }).catch(() => {});
-        resolve(null);
-      }
-    });
+    collector.on('end', (c) => { if (c.size === 0) resolve(null); });
     state.collectors.push(collector);
   });
 }
 
-// ─── 開始回合 ───
-async function startTurn(channel) {
-  if (state.phase !== 'playing') return;
-  if (state.turnTimer) { clearTimeout(state.turnTimer); state.turnTimer = null; }
+// ─── 夜晚流程 ───
+async function startNight(channel) {
+  state.night++;
+  state.phase = 'night';
+  state.wolfTarget = null;
+  state.wolfVotes.clear();
+  state.guardTarget = null;
+  state.witchHealed = false;
+  state.witchPoisonTarget = null;
+  state.nightDeaths = [];
 
-  const currentPlayerId = state.order[state.orderIndex];
-  const mayor = findPlayer(state.mayorId);
-  const timeInfo = state.turnTimeLimit > 0 ? ` ｜ ⏱️ ${state.turnTimeLimit / 60000} 分鐘` : '';
+  await channel.send({ embeds: [e(`🌙 **第 ${state.night} 夜降臨，所有人閉眼...**`)] });
+  await sleep(1500);
 
-  // 順序列表，標記目前輪到的人
-  const orderList = state.order.map((id, i) => {
-    const p = findPlayer(id);
-    const arrow = id === currentPlayerId ? '➡️ ' : '　　';
-    return `${arrow}${i + 1}. ${p.name}`;
-  }).join('\n');
-
-  await channel.send({
-    embeds: [e(`👑 村長：**${mayor.name}**\n\n📋 提問順序：\n${orderList}\n\n🎯 輪到 <@${currentPlayerId}>！\n用 \`!wwg 內容\` 提問或猜詞，或 \`!wwp\` 跳過\n\n第 ${state.round} / ${state.maxRounds} 輪${timeInfo}`)],
-  });
-
-  if (state.turnTimeLimit > 0) {
-    state.turnTimer = setTimeout(async () => {
-      if (state.phase !== 'playing') return;
-      const player = findPlayer(currentPlayerId);
-      await channel.send({ embeds: [e(`⏰ **${player?.name}** 超時，自動跳過！`)] });
-      await advanceTurn(channel);
-    }, state.turnTimeLimit);
+  // 1. 守衛
+  if (hasAliveRole('guard')) {
+    await guardPhase(channel);
   }
+
+  // 2. 狼人
+  await wolfPhase(channel);
+
+  // 3. 女巫
+  if (hasAliveRole('witch')) {
+    await witchPhase(channel);
+  }
+
+  // 4. 預言家
+  if (hasAliveRole('seer')) {
+    await seerPhase(channel);
+  }
+
+  // 結算夜晚
+  await resolveNight(channel);
 }
 
-// 推進回合
-async function advanceTurn(channel) {
-  if (state.phase !== 'playing') return;
-  state.orderIndex++;
-  if (state.orderIndex >= state.order.length) {
-    state.orderIndex = 0;
-    state.round++;
-    if (state.round > state.maxRounds) {
-      await channel.send({ embeds: [e(`⏰ **${state.maxRounds} 輪已結束！沒有人猜出答案。**\n答案是：**${state.word}**\n\n接下來投票猜誰是狼人...`)] });
-      await startVillagerVote(channel);
-      return;
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─── 守衛 ───
+async function guardPhase(channel) {
+  await channel.send({ embeds: [e('🛡️ 守衛正在行動...（限時 2 分鐘）')] });
+  const guard = getAliveByRole('guard')[0];
+  const targets = getAlivePlayers().filter(p => p.id !== state.lastGuardTarget);
+
+  const choice = await awaitChoice(
+    guard.id,
+    e(`🛡️ **你是守衛**\n${state.lastGuardTarget ? `上一晚守了 **${findPlayer(state.lastGuardTarget)?.name}**，本晚不能再守同一人。` : ''}\n\n選擇要保護的人（限時 2 分鐘）：`),
+    targets, 'guard', null, 120000
+  );
+
+  state.guardTarget = choice;
+  const targetName = choice ? findPlayer(choice)?.name : '無';
+  const member = await state.guild.members.fetch(guard.id);
+  await member.send({ embeds: [e(`🛡️ 你選擇保護 **${targetName}**`)] });
+}
+
+// ─── 狼人 ───
+async function wolfPhase(channel) {
+  await channel.send({ embeds: [e('🐺 狼人正在行動...（限時 3 分鐘）')] });
+  const wolves = getAliveByRole('wolf');
+  const targets = getAlivePlayers();
+
+  while (true) {
+    state.wolfVotes.clear();
+    const wolfTeamInfo = (wolfId) => {
+      const mates = wolves.filter(w => w.id !== wolfId).map(w => w.name);
+      return mates.length ? `你的狼隊友：${mates.join('、')}` : '你是唯一的狼人';
+    };
+
+    const promises = wolves.map(wolf =>
+      awaitChoice(
+        wolf.id,
+        e(`🐺 **你是狼人**\n${wolfTeamInfo(wolf.id)}\n\n選擇要擊殺的目標（限時 3 分鐘）：`),
+        targets, 'wolf', null, 180000
+      ).then(choice => {
+        state.wolfVotes.set(wolf.id, choice);
+      })
+    );
+
+    await Promise.all(promises);
+
+    // 只有一隻狼直接通過
+    if (wolves.length === 1) {
+      state.wolfTarget = state.wolfVotes.values().next().value;
+      break;
     }
-    await channel.send({ embeds: [e(`📋 **第 ${state.round} 輪開始！**`)] });
+
+    // 檢查是否一致
+    const choices = [...state.wolfVotes.values()];
+    if (new Set(choices).size === 1 && choices[0]) {
+      state.wolfTarget = choices[0];
+      const targetName = findPlayer(state.wolfTarget)?.name;
+      for (const wolf of wolves) {
+        const member = await state.guild.members.fetch(wolf.id);
+        await member.send({ embeds: [e(`🐺 所有狼人同意擊殺 **${targetName}**！`)] });
+      }
+      break;
+    } else {
+      // 不一致，重新選
+      for (const wolf of wolves) {
+        const member = await state.guild.members.fetch(wolf.id);
+        const voteInfo = [...state.wolfVotes.entries()].map(([wid, tid]) => {
+          const wName = findPlayer(wid)?.name;
+          const tName = findPlayer(tid)?.name || '未選';
+          return `${wName} → ${tName}`;
+        }).join('\n');
+        await member.send({ embeds: [e(`❌ **狼隊意見不一致！請重新選擇。**\n\n各人選擇：\n${voteInfo}`)] });
+      }
+    }
   }
-  await startTurn(channel);
 }
 
-// ─── 狼人投票猜先知（猜對答案後）───
-async function startWolfVote(channel) {
-  state.phase = 'wolf_vote';
-  const wolves = state.players.filter(p => p.role === 'wolf');
-  const candidates = state.players.filter(p => p.role !== 'wolf' && p.role !== 'mayor');
+// ─── 女巫 ───
+async function witchPhase(channel) {
+  await channel.send({ embeds: [e('🧪 女巫正在行動...（限時 2 分鐘）')] });
+  const witch = getAliveByRole('witch')[0];
+
+  // 判斷狼刀是否被守衛擋下
+  const wolfKill = state.wolfTarget;
+  const guardedTarget = state.guardTarget;
+  const actuallyKilled = (wolfKill && wolfKill !== guardedTarget) ? wolfKill : null;
+  const killedName = actuallyKilled ? findPlayer(actuallyKilled)?.name : null;
+
+  const hasHeal = !state.witchHealUsed;
+  const hasPoison = !state.witchPoisonUsed;
+
+  if (!hasHeal && !hasPoison) return; // 兩瓶都用完了
+
+  let promptText = '🧪 **你是女巫**\n\n';
+  if (hasHeal && actuallyKilled) {
+    promptText += `昨晚 **${killedName}** 被殺了。\n`;
+  } else if (hasHeal && !actuallyKilled) {
+    promptText += `昨晚沒有人被殺（被守衛擋下或狼人自刀失敗）。\n`;
+  }
+  promptText += `\n💊 解藥：${hasHeal ? '✅ 有' : '❌ 已用'}\n☠️ 毒藥：${hasPoison ? '✅ 有' : '❌ 已用'}\n\n選擇行動：`;
+
+  const extraBtns = [];
+  if (hasHeal && actuallyKilled) {
+    extraBtns.push({ id: `heal_${actuallyKilled}`, label: `💊 救 ${killedName}`, style: ButtonStyle.Success });
+  }
+  extraBtns.push({ id: 'pass', label: '🚫 不使用', style: ButtonStyle.Secondary });
+
+  // 毒藥目標：所有活人除了自己和被殺的人
+  const poisonTargets = hasPoison
+    ? getAlivePlayers().filter(p => p.id !== witch.id && p.id !== actuallyKilled)
+    : [];
 
   const ts = Date.now();
-  const rows = [];
-  for (let i = 0; i < candidates.length; i += 5) {
-    const row = new ActionRowBuilder();
-    for (const p of candidates.slice(i, i + 5)) {
-      row.addComponents(new ButtonBuilder().setCustomId(`wvote_${ts}_${p.id}`).setLabel(p.name).setStyle(ButtonStyle.Secondary));
+  const components = [];
+
+  // 毒藥目標按鈕
+  if (poisonTargets.length > 0) {
+    for (let i = 0; i < poisonTargets.length; i += 5) {
+      const row = new ActionRowBuilder();
+      for (const p of poisonTargets.slice(i, i + 5)) {
+        row.addComponents(
+          new ButtonBuilder()
+            .setCustomId(`witch_${ts}_poison_${p.id}`)
+            .setLabel(`☠️ ${p.name}`)
+            .setStyle(ButtonStyle.Danger)
+        );
+      }
+      components.push(row);
     }
-    rows.push(row);
   }
 
-  const wolfNames = wolves.map(w => `<@${w.id}>`).join('、');
-  const msg = await channel.send({
-    embeds: [e(`🐺 **狼人投票時間！**\n\n${wolfNames}，猜猜誰是先知？\n猜中 → 狼人勝利！猜不中 → 好人勝利！`)],
-    components: rows,
+  // 救人 + 跳過
+  const actionRow = new ActionRowBuilder();
+  for (const btn of extraBtns) {
+    actionRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`witch_${ts}_${btn.id}`)
+        .setLabel(btn.label)
+        .setStyle(btn.style)
+    );
+  }
+  components.push(actionRow);
+
+  const member = await state.guild.members.fetch(witch.id);
+  const msg = await member.send({ embeds: [e(promptText)], components });
+
+  const choice = await new Promise((resolve) => {
+    const collector = msg.createMessageComponentCollector({
+      filter: i => i.customId.startsWith(`witch_${ts}_`),
+      max: 1, time: 120000,
+    });
+    collector.on('collect', async (i) => {
+      await i.update({ components: [] });
+      resolve(i.customId.replace(`witch_${ts}_`, ''));
+    });
+    collector.on('end', (c) => { if (c.size === 0) resolve('pass'); });
+    state.collectors.push(collector);
   });
 
-  const wolfIds = new Set(wolves.map(w => w.id));
+  if (choice.startsWith('heal_')) {
+    state.witchHealed = true;
+    state.witchHealUsed = true;
+    await member.send({ embeds: [e(`💊 你使用了解藥，救了 **${killedName}**！`)] });
+  } else if (choice.startsWith('poison_')) {
+    const targetId = choice.replace('poison_', '');
+    state.witchPoisonTarget = targetId;
+    state.witchPoisonUsed = true;
+    const targetName = findPlayer(targetId)?.name;
+    await member.send({ embeds: [e(`☠️ 你使用了毒藥，毒了 **${targetName}**！`)] });
+  } else {
+    await member.send({ embeds: [e('🚫 你選擇不使用藥水。')] });
+  }
+}
+
+// ─── 預言家 ───
+async function seerPhase(channel) {
+  await channel.send({ embeds: [e('🔮 預言家正在行動...（限時 2 分鐘）')] });
+  const seer = getAliveByRole('seer')[0];
+  const targets = getAlivePlayers().filter(p => p.id !== seer.id);
+
+  const choice = await awaitChoice(
+    seer.id,
+    e('🔮 **你是預言家**\n\n選擇要查驗的人（限時 2 分鐘）：'),
+    targets, 'seer', null, 120000
+  );
+
+  if (choice) {
+    const target = findPlayer(choice);
+    const isWolf = target?.role === 'wolf';
+    const member = await state.guild.members.fetch(seer.id);
+    await member.send({
+      embeds: [e(`🔮 查驗結果：**${target.name}** 是 ${isWolf ? '🐺 **狼人**' : '👤 **好人**'}`)],
+    });
+  }
+}
+
+// ─── 結算夜晚 ───
+async function resolveNight(channel) {
+  const deaths = [];
+
+  // 狼刀結果
+  if (state.wolfTarget) {
+    const isGuarded = state.wolfTarget === state.guardTarget;
+    const isHealed = state.witchHealed;
+
+    if (!isGuarded && !isHealed) {
+      const victim = findPlayer(state.wolfTarget);
+      if (victim && victim.alive) {
+        victim.alive = false;
+        victim.causeOfDeath = 'wolf';
+        await addDeadRole(victim.id);
+        deaths.push(victim);
+      }
+    }
+  }
+
+  // 女巫毒殺（守衛擋不住）
+  if (state.witchPoisonTarget) {
+    const victim = findPlayer(state.witchPoisonTarget);
+    if (victim && victim.alive) {
+      victim.alive = false;
+      victim.causeOfDeath = 'poison';
+      await addDeadRole(victim.id);
+      deaths.push(victim);
+    }
+  }
+
+  // 更新守衛記錄
+  state.lastGuardTarget = state.guardTarget;
+
+  state.nightDeaths = deaths;
+
+  // 進入白天
+  await startDay(channel);
+}
+
+// ─── 白天流程 ───
+async function startDay(channel) {
+  state.phase = 'day';
+  await sleep(1500);
+
+  // 公布死亡
+  if (state.nightDeaths.length === 0) {
+    await channel.send({ embeds: [e('☀️ **天亮了！**\n\n昨晚是平安夜，沒有人死亡。')] });
+  } else {
+    const deathNames = state.nightDeaths.map(p => `**${p.name}**`).join('、');
+    await channel.send({ embeds: [e(`☀️ **天亮了！**\n\n昨晚 ${deathNames} 死了。`)] });
+  }
+
+  // 獵人開槍（如果獵人在夜晚死亡且不是被毒死）
+  for (const dead of state.nightDeaths) {
+    if (dead.role === 'hunter' && dead.causeOfDeath !== 'poison') {
+      await handleHunterShot(channel, dead);
+    }
+  }
+
+  // 檢查勝利
+  const win = checkWin();
+  if (win) { await announceWin(channel, win); return; }
+
+  // 討論 + 投票按鈕（主持人專用）
+  const ts = Date.now();
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`startvote_${ts}`)
+      .setLabel('📝 開始投票')
+      .setStyle(ButtonStyle.Primary)
+  );
+  const msg = await channel.send({
+    embeds: [e('💬 **自由討論時間**\n\n主持人覺得討論夠了，點下方按鈕開始投票。')],
+    components: [row],
+  });
+
   const collector = msg.createMessageComponentCollector({
-    filter: i => i.customId.startsWith(`wvote_${ts}_`) && wolfIds.has(i.user.id),
-    max: 1, time: 300000,
+    filter: i => i.customId === `startvote_${ts}` && i.user.id === state.hostId,
+    max: 1, time: 3600000,
   });
   collector.on('collect', async (i) => {
-    const targetId = i.customId.replace(`wvote_${ts}_`, '');
-    const target = findPlayer(targetId);
-    const isSeer = target?.role === 'seer';
     await i.update({ components: [] });
-    const roleList = state.players.map(p => `${p.name} — ${ROLE_NAMES[p.role]}`).join('\n');
-    if (isSeer) {
-      await channel.send({ embeds: [e(`🐺 **狼人猜中了！** ${target.name} 就是先知！\n\n🐺🐺🐺 **狼人陣營勝利！**\n\n📋 **角色公布：**\n${roleList}`)] });
-    } else {
-      await channel.send({ embeds: [e(`🐺 狼人猜了 ${target.name}，但不是先知！\n\n🎉🎉🎉 **好人陣營勝利！**\n\n📋 **角色公布：**\n${roleList}`)] });
-    }
-    reset();
-  });
-  collector.on('end', (c) => {
-    if (c.size === 0) {
-      const roleList = state.players.map(p => `${p.name} — ${ROLE_NAMES[p.role]}`).join('\n');
-      channel.send({ embeds: [e(`⏰ 狼人未投票，好人陣營勝利！\n\n📋 **角色公布：**\n${roleList}`)] });
-      reset();
-    }
+    await startVoting(channel);
   });
   state.collectors.push(collector);
 }
 
-// ─── 村民投票猜狼人（沒猜出答案後）───
-async function startVillagerVote(channel) {
-  state.phase = 'villager_vote';
-  const voters = state.players.filter(p => p.role !== 'mayor');
-  const candidates = state.players.filter(p => p.role !== 'mayor');
-  const votes = new Map();
+// ─── 獵人開槍 ───
+async function handleHunterShot(channel, hunter) {
+  const targets = getAlivePlayers();
+  if (targets.length === 0) return;
+
+  await channel.send({ embeds: [e('🏹 有人發動了技能，正在選擇目標...')] });
+
+  const choice = await awaitChoice(
+    hunter.id,
+    e('🏹 **你是獵人，你死了！**\n\n選擇要帶走的人：'),
+    targets, 'hunter_shot', null, 120000
+  );
+
+  if (choice) {
+    const victim = findPlayer(choice);
+    if (victim) {
+      victim.alive = false;
+      victim.causeOfDeath = 'hunter';
+      await addDeadRole(victim.id);
+      await channel.send({ embeds: [e(`🏹 **${victim.name}** 被帶走了！`)] });
+
+      if (victim.role === 'hunter' && victim.causeOfDeath !== 'poison') {
+        await handleHunterShot(channel, victim);
+      }
+    }
+  } else {
+    await channel.send({ embeds: [e('🏹 技能超時，無人被帶走。')] });
+  }
+}
+
+// ─── 投票 ───
+async function startVoting(channel) {
+  state.phase = 'voting';
+  state.votes.clear();
+
+  const alive = getAlivePlayers();
   const ts = Date.now();
 
   function buildVoteEmbed() {
-    let text = '🗳️ **投票猜狼人！**\n\n點按鈕投票，可以改票。主持人按確認後結算。\n\n';
+    let voteText = '🗳️ **投票放逐**\n\n點按鈕投票，可以改票。\n主持人按「確認結算」結束投票。\n\n';
     const tally = {};
-    for (const [voterId, targetId] of votes) {
+    for (const [voterId, targetId] of state.votes) {
       if (!tally[targetId]) tally[targetId] = [];
-      tally[targetId].push(findPlayer(voterId)?.name);
+      tally[targetId].push(findPlayer(voterId)?.name || voterId);
     }
     if (Object.keys(tally).length === 0) {
-      text += '目前還沒有人投票。';
+      voteText += '目前還沒有人投票。';
     } else {
-      for (const [tid, vnames] of Object.entries(tally)) {
-        text += `**${findPlayer(tid)?.name}**（${vnames.length} 票）：${vnames.join('、')}\n`;
+      for (const [targetId, voters] of Object.entries(tally)) {
+        const targetName = findPlayer(targetId)?.name || '?';
+        voteText += `**${targetName}**（${voters.length} 票）：${voters.join('、')}\n`;
       }
     }
-    text += `\n已投票：${votes.size} / ${voters.length}`;
-    return e(text);
+    const voted = state.votes.size;
+    voteText += `\n已投票：${voted} / ${alive.length}`;
+    return e(voteText);
   }
 
-  function buildComponents() {
+  function buildVoteComponents() {
     const rows = [];
-    for (let i = 0; i < candidates.length; i += 5) {
+    for (let i = 0; i < alive.length; i += 5) {
       const row = new ActionRowBuilder();
-      for (const p of candidates.slice(i, i + 5)) {
-        row.addComponents(new ButtonBuilder().setCustomId(`cvote_${ts}_${p.id}`).setLabel(p.name).setStyle(ButtonStyle.Secondary));
+      for (const p of alive.slice(i, i + 5)) {
+        row.addComponents(
+          new ButtonBuilder()
+            .setCustomId(`vote_${ts}_${p.id}`)
+            .setLabel(p.name)
+            .setStyle(ButtonStyle.Secondary)
+        );
       }
       rows.push(row);
     }
+    // 確認按鈕（獨立一行）
     if (rows.length < 5) {
-      rows.push(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`cvoteconfirm_${ts}`).setLabel('✅ 確認結算').setStyle(ButtonStyle.Success)
-      ));
+      const confirmRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`voteconfirm_${ts}`)
+          .setLabel('✅ 確認結算')
+          .setStyle(ButtonStyle.Success)
+      );
+      rows.push(confirmRow);
     }
     return rows;
   }
 
-  const msg = await channel.send({ embeds: [buildVoteEmbed()], components: buildComponents() });
-  const voterIds = new Set(voters.map(v => v.id));
-  const collector = msg.createMessageComponentCollector({
-    filter: i => i.customId.startsWith(`cvote_${ts}_`) || i.customId === `cvoteconfirm_${ts}`,
+  const voteMsg = await channel.send({
+    embeds: [buildVoteEmbed()],
+    components: buildVoteComponents(),
+  });
+  state.voteMsg = voteMsg;
+
+  const voteCollector = voteMsg.createMessageComponentCollector({
+    filter: i => i.customId.startsWith(`vote_${ts}_`) || i.customId === `voteconfirm_${ts}`,
     time: 3600000,
   });
 
-  collector.on('collect', async (i) => {
-    if (i.customId === `cvoteconfirm_${ts}`) {
-      if (i.user.id !== state.hostId) return i.reply({ embeds: [e('❌ 只有主持人才能確認結算！')], ephemeral: true });
-      collector.stop();
+  state.voteCollector = voteCollector;
+
+  voteCollector.on('collect', async (i) => {
+    // 確認結算
+    if (i.customId === `voteconfirm_${ts}`) {
+      if (i.user.id !== state.hostId) {
+        return i.reply({ embeds: [e('❌ 只有主持人才能確認結算！')], ephemeral: true });
+      }
+      voteCollector.stop();
       await i.update({ components: [] });
-      const tally = {};
-      for (const [, tid] of votes) tally[tid] = (tally[tid] || 0) + 1;
-      const roleList = state.players.map(p => `${p.name} — ${ROLE_NAMES[p.role]}`).join('\n');
-      if (Object.keys(tally).length === 0) {
-        await channel.send({ embeds: [e(`沒有人投票！\n\n🐺🐺🐺 **狼人陣營勝利！**\n\n📋 **角色公布：**\n${roleList}`)] });
-        reset(); return;
-      }
-      const maxVotes = Math.max(...Object.values(tally));
-      const topIds = Object.keys(tally).filter(id => tally[id] === maxVotes);
-      if (topIds.length > 1) {
-        await channel.send({ embeds: [e(`⚖️ 平票！\n\n🐺🐺🐺 **狼人陣營勝利！**\n\n📋 **角色公布：**\n${roleList}`)] });
-        reset(); return;
-      }
-      const voted = findPlayer(topIds[0]);
-      if (voted?.role === 'wolf') {
-        await channel.send({ embeds: [e(`🎯 **${voted.name}** 被票選出局，是狼人！\n\n🎉🎉🎉 **好人陣營勝利！**\n\n📋 **角色公布：**\n${roleList}`)] });
-      } else {
-        await channel.send({ embeds: [e(`😱 **${voted.name}** 被票選出局，但不是狼人！\n\n🐺🐺🐺 **狼人陣營勝利！**\n\n📋 **角色公布：**\n${roleList}`)] });
-      }
-      reset(); return;
+      await resolveVote(channel);
+      return;
     }
-    if (!voterIds.has(i.user.id)) return i.reply({ embeds: [e('❌ 你不在這局遊戲中！')], ephemeral: true });
-    const targetId = i.customId.replace(`cvote_${ts}_`, '');
-    votes.set(i.user.id, targetId);
-    await i.update({ embeds: [buildVoteEmbed()], components: buildComponents() });
+
+    // 投票
+    const targetId = i.customId.replace(`vote_${ts}_`, '');
+    const voter = findPlayer(i.user.id);
+    if (!voter || !voter.alive) {
+      return i.reply({ embeds: [e('❌ 你不在這局遊戲中或已死亡！')], ephemeral: true });
+    }
+    // 不能投自己
+    if (targetId === i.user.id) {
+      return i.reply({ embeds: [e('❌ 不能投自己！')], ephemeral: true });
+    }
+
+    state.votes.set(i.user.id, targetId);
+    await i.update({ embeds: [buildVoteEmbed()], components: buildVoteComponents() });
   });
-  state.collectors.push(collector);
+}
+
+// ─── 結算投票 ───
+async function resolveVote(channel) {
+  const tally = {};
+  for (const [, targetId] of state.votes) {
+    tally[targetId] = (tally[targetId] || 0) + 1;
+  }
+
+  if (Object.keys(tally).length === 0) {
+    await channel.send({ embeds: [e('⚖️ 沒有人投票，本輪沒有人被放逐。')] });
+    await startNight(channel);
+    return;
+  }
+
+  const maxVotes = Math.max(...Object.values(tally));
+  const topIds = Object.keys(tally).filter(id => tally[id] === maxVotes);
+
+  if (topIds.length > 1) {
+    const names = topIds.map(id => `**${findPlayer(id)?.name}**`).join('、');
+    await channel.send({ embeds: [e(`⚖️ ${names} 各 ${maxVotes} 票，平票！本輪沒有人被放逐。`)] });
+    await startNight(channel);
+    return;
+  }
+
+  const exiledId = topIds[0];
+  const exiled = findPlayer(exiledId);
+  exiled.alive = false;
+  exiled.causeOfDeath = 'vote';
+  await addDeadRole(exiled.id);
+
+  await channel.send({ embeds: [e(`⚖️ **${exiled.name}** 被放逐了！（${maxVotes} 票）`)] });
+
+  // 獵人被放逐 → 開槍
+  if (exiled.role === 'hunter' && exiled.causeOfDeath !== 'poison') {
+    await handleHunterShot(channel, exiled);
+  }
+
+  // 檢查勝利
+  const win = checkWin();
+  if (win) { await announceWin(channel, win); return; }
+
+  // 進入夜晚
+  await startNight(channel);
+}
+
+// ─── 勝利公告 ───
+async function announceWin(channel, side) {
+  const roleList = state.players.map(p =>
+    `${p.alive ? '✅' : '💀'} ${p.name} — ${ROLE_NAMES[p.role]}`
+  ).join('\n');
+
+  if (side === 'good') {
+    await channel.send({ embeds: [e(`🎉🎉🎉 **好人陣營勝利！**\n\n所有狼人已被消滅！\n\n📋 **角色公布：**\n${roleList}`)] });
+  } else {
+    await channel.send({ embeds: [e(`🐺🐺🐺 **狼人陣營勝利！**\n\n好人陣營已無力回天！\n\n📋 **角色公布：**\n${roleList}`)] });
+  }
+  await removeAllDeadRoles();
+  reset();
 }
 
 // ─── 指令 ───
 const commands = {
-  async wws(message) {
-    if (state.phase !== 'idle') return message.reply({ embeds: [e('❌ 目前已有一局狼人真言進行中！')] });
+  async ws(message) {
+    if (state.phase !== 'idle') return message.reply({ embeds: [e('❌ 目前已有一局狼人殺進行中！')] });
     reset();
     state.phase = 'waiting'; state.hostId = message.author.id;
     state.channelId = message.channel.id; state.guild = message.guild;
-    state.players.push({ id: message.author.id, name: message.member.displayName, role: null });
-    message.channel.send({ embeds: [e(`🔮 **狼人真言開局！**\n👑 主持人：${message.member.displayName}\n\n輸入 \`!wwj\` 加入遊戲\n主持人輸入 \`!wwb\` 開始遊戲（至少 4 人）\n\n目前玩家（1人）：${message.member.displayName}`)] });
+    state.players.push({ id: message.author.id, name: message.member.displayName, role: null, alive: true, causeOfDeath: null });
+    message.channel.send({ embeds: [e(`🐺 **狼人殺開局！**\n👑 主持人：${message.member.displayName}\n\n輸入 \`!wj\` 加入遊戲\n主持人輸入 \`!wb\` 開始遊戲（需要 6~10 人）\n\n目前玩家（1人）：${message.member.displayName}`)] });
   },
 
-  async wwj(message) {
-    if (state.phase !== 'waiting') return message.reply({ embeds: [e('❌ 目前沒有開放加入的狼人真言局！')] });
+  async wj(message) {
+    if (state.phase !== 'waiting') return message.reply({ embeds: [e('❌ 目前沒有開放加入的狼人殺局！')] });
     if (state.players.find(p => p.id === message.author.id)) return message.reply({ embeds: [e('❌ 你已經加入了！')] });
     if (state.players.length >= 10) return message.reply({ embeds: [e('❌ 已滿 10 人！')] });
-    state.players.push({ id: message.author.id, name: message.member.displayName, role: null });
+    state.players.push({ id: message.author.id, name: message.member.displayName, role: null, alive: true, causeOfDeath: null });
     const names = state.players.map(p => p.name).join('、');
-    message.channel.send({ embeds: [e(`✅ **${message.member.displayName}** 加入狼人真言！\n目前玩家（${state.players.length}人）：${names}`)] });
+    message.channel.send({ embeds: [e(`✅ **${message.member.displayName}** 加入狼人殺！\n目前玩家（${state.players.length}人）：${names}`)] });
   },
 
-  async wwb(message) {
-    if (state.phase !== 'waiting') return message.reply({ embeds: [e('❌ 目前沒有等待中的狼人真言局！')] });
+  async wb(message) {
+    if (state.phase !== 'waiting') return message.reply({ embeds: [e('❌ 目前沒有等待中的狼人殺局！')] });
     if (message.author.id !== state.hostId) return message.reply({ embeds: [e('❌ 只有主持人才能開始遊戲！')] });
-    if (state.players.length < 4) return message.reply({ embeds: [e('❌ 至少需要 4 人！')] });
+    const count = state.players.length;
+    if (count < 6) return message.reply({ embeds: [e('❌ 至少需要 6 人才能開始！')] });
+    if (count > 10) return message.reply({ embeds: [e('❌ 最多 10 人！')] });
 
-    const config = getRoleConfig(state.players.length);
+    const config = ROLE_CONFIGS[count];
+    if (!config) return message.reply({ embeds: [e(`❌ 不支援 ${count} 人配置！`)] });
+
+    // 分配角色
     const roles = [];
-    for (const [role, num] of Object.entries(config)) { for (let i = 0; i < num; i++) roles.push(role); }
-    const shuffled = shuffle(roles);
-    state.players.forEach((p, i) => { p.role = shuffled[i]; });
+    for (const [role, num] of Object.entries(config)) {
+      for (let i = 0; i < num; i++) roles.push(role);
+    }
+    const shuffledRoles = shuffle(roles);
+    state.players.forEach((p, i) => { p.role = shuffledRoles[i]; });
 
-    const mayor = state.players.find(p => p.role === 'mayor');
-    state.mayorId = mayor.id;
+    state.phase = 'night';
     state.guild = message.guild;
 
-    // 主持人選擇限時
-    const tsTime = Date.now();
-    const timeRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`timelimit_${tsTime}_0`).setLabel('⏳ 不限時').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`timelimit_${tsTime}_120`).setLabel('⏱️ 2 分鐘').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`timelimit_${tsTime}_180`).setLabel('⏱️ 3 分鐘').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`timelimit_${tsTime}_300`).setLabel('⏱️ 5 分鐘').setStyle(ButtonStyle.Primary),
-    );
-    const timeMsg = await message.channel.send({
-      embeds: [e(`⏱️ **村長請選擇每回合限時：**`)],
-      components: [timeRow],
-    });
+    // 公告
+    await message.channel.send({ embeds: [e(`🐺 **狼人殺開始！共 ${count} 人**\n\n角色已透過私訊分配，請查看 DM。\n\n即將進入第一個夜晚...`)] });
 
-    state.turnTimeLimit = await new Promise((resolve) => {
-      const collector = timeMsg.createMessageComponentCollector({
-        filter: i => i.customId.startsWith(`timelimit_${tsTime}_`) && i.user.id === state.mayorId,
-        max: 1, time: 60000,
-      });
-      collector.on('collect', async (i) => {
-        const seconds = parseInt(i.customId.replace(`timelimit_${tsTime}_`, ''));
-        const label = seconds === 0 ? '不限時' : `${seconds / 60} 分鐘`;
-        await i.update({ embeds: [e(`⏱️ 每回合限時：**${label}**`)], components: [] });
-        resolve(seconds * 1000);
-      });
-      collector.on('end', (c) => {
-        if (c.size === 0) {
-          timeMsg.edit({ embeds: [e('⏱️ 村長超時，預設不限時')], components: [] }).catch(() => {});
-          resolve(0);
-        }
-      });
-      state.collectors.push(collector);
-    });
-
-    // 如果等待期間被取消了，中止
-    if (state.phase === 'idle') return;
-
-    // 頻道內讓村長設定詞彙
-    const ts = Date.now();
-    const setupRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`wordsetup_${ts}_custom`).setLabel('✏️ 自訂詞彙').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`wordsetup_${ts}_random`).setLabel('🎲 隨機選詞').setStyle(ButtonStyle.Secondary),
-    );
-    const setupMsg = await message.channel.send({
-      embeds: [e(`👑 **等待村長設定詞彙...**\n\n<@${mayor.id}> 請選擇自訂詞彙或隨機選詞。`)],
-      components: [setupRow],
-    });
-
-    const word = await new Promise((resolve) => {
-      const collector = setupMsg.createMessageComponentCollector({
-        filter: i => i.customId.startsWith(`wordsetup_${ts}_`) && i.user.id === mayor.id,
-        max: 1, time: 120000,
-      });
-      collector.on('collect', async (i) => {
-        if (i.customId === `wordsetup_${ts}_random`) {
-          const w = DEFAULT_WORDS[Math.floor(Math.random() * DEFAULT_WORDS.length)];
-          await setupMsg.edit({ embeds: [e('👑 村長已設定詞彙！')], components: [] });
-          await i.reply({ embeds: [e(`👑 你設定的詞彙是：**${w}**\n（只有你看得到）`)], ephemeral: true });
-          resolve(w);
-        } else {
-          const modal = new ModalBuilder()
-            .setCustomId(`wordmodal_${ts}`)
-            .setTitle('設定魔法咒語')
-            .addComponents(
-              new ActionRowBuilder().addComponents(
-                new TextInputBuilder()
-                  .setCustomId('word_input')
-                  .setLabel('輸入你的詞彙')
-                  .setStyle(TextInputStyle.Short)
-                  .setPlaceholder('例如：蘋果')
-                  .setRequired(true)
-                  .setMaxLength(20)
-              )
-            );
-          await i.showModal(modal);
-          try {
-            const submitted = await i.awaitModalSubmit({ time: 120000 });
-            const w = submitted.fields.getTextInputValue('word_input').trim();
-            await setupMsg.edit({ embeds: [e('👑 村長已設定詞彙！')], components: [] });
-            await submitted.reply({ embeds: [e(`👑 你設定的詞彙是：**${w}**\n（只有你看得到）`)], ephemeral: true });
-            resolve(w);
-          } catch {
-            const w = DEFAULT_WORDS[Math.floor(Math.random() * DEFAULT_WORDS.length)];
-            await setupMsg.edit({ embeds: [e('👑 村長超時，已隨機選詞！')], components: [] });
-            resolve(w);
-          }
-        }
-      });
-      collector.on('end', (c) => {
-        if (c.size === 0) {
-          const w = DEFAULT_WORDS[Math.floor(Math.random() * DEFAULT_WORDS.length)];
-          setupMsg.edit({ embeds: [e('👑 村長超時，已隨機選詞！')], components: [] }).catch(() => {});
-          resolve(w);
-        }
-      });
-      state.collectors.push(collector);
-    });
-
-    state.word = word;
-
-    // 如果等待期間被取消了，中止
-    if (state.phase === 'idle') return;
-
-    // 如果設定期間有人離開導致人數不足，中止
-    if (state.players.length < 4) {
-      reset();
-      return message.channel.send({ embeds: [e('❌ 設定期間有人離開，玩家不足 4 人，遊戲取消！')] });
-    }
-
-    // 私訊角色 + 詞彙
+    // 私訊角色
     for (const p of state.players) {
       try {
         const member = await message.guild.members.fetch(p.id);
-        if (p.role === 'mayor') {
-          await member.send({ embeds: [e(`你的角色是：${ROLE_NAMES[p.role]}\n\n🔑 魔法咒語是：**${state.word}**`)] });
-        } else if (p.role === 'wolf' || p.role === 'seer') {
-          await member.send({ embeds: [e(`你的角色是：${ROLE_NAMES[p.role]}\n\n🔑 魔法咒語是：**${state.word}**`)] });
-        } else {
-          await member.send({ embeds: [e(`你的角色是：${ROLE_NAMES[p.role]}`)] });
+        let roleInfo = `你的角色是：${ROLE_NAMES[p.role]}`;
+        if (p.role === 'wolf') {
+          const mates = state.players.filter(pp => pp.role === 'wolf' && pp.id !== p.id).map(pp => pp.name);
+          roleInfo += `\n\n🐺 你的狼隊友：${mates.length ? mates.join('、') : '只有你自己'}`;
         }
+        await member.send({ embeds: [e(roleInfo)] });
       } catch {
-        await message.channel.send({ embeds: [e(`⚠️ 無法私訊 ${p.name}！`)] });
+        await message.channel.send({ embeds: [e(`⚠️ 無法私訊 ${p.name}，請開啟私訊功能！`)] });
       }
     }
 
-    // 設定提問順序（不含村長）
-    state.order = shuffle(state.players.filter(p => p.role !== 'mayor').map(p => p.id));
-    state.orderIndex = 0; state.round = 1; state.phase = 'playing';
-
-    const finalMayor = findPlayer(state.mayorId);
-    const orderNames = state.order.map((id, i) => `${i + 1}. ${findPlayer(id).name}`).join('\n');
-    await message.channel.send({ embeds: [e(`🔮 **狼人真言開始！共 ${state.players.length} 人**\n\n👑 村長：**${finalMayor.name}**\n\n📋 提問順序：\n${orderNames}\n\n共 ${state.maxRounds} 輪機會，開始！`)] });
-    await startTurn(message.channel);
+    await sleep(2000);
+    await startNight(message.channel);
   },
 
-  async wwg(message, args) {
-    if (state.phase !== 'playing') return message.reply({ embeds: [e('❌ 目前沒有進行中的狼人真言！')] });
-    const currentPlayerId = state.order[state.orderIndex];
-    if (message.author.id !== currentPlayerId) {
-      return message.reply({ embeds: [e(`❌ 現在輪到 **${findPlayer(currentPlayerId)?.name}**，還沒輪到你！`)] });
-    }
-    const content = args.join(' ').trim();
-    if (!content) return message.reply({ embeds: [e('❌ 請輸入內容！例如 `!wwg 是動物嗎` 或 `!wwg 蘋果`')] });
-
-    // 清除計時器
-    if (state.turnTimer) { clearTimeout(state.turnTimer); state.turnTimer = null; }
-
-    // 顯示村長回答面板
-    const answer = await showMayorPanel(message.channel, content, findPlayer(currentPlayerId).name);
-
-    // 村長按了「正確」
-    if (answer === 'correct') {
-      await message.channel.send({ embeds: [e(`🎉 **答案猜中了！**\n\n接下來狼人要猜出誰是先知...`)] });
-      await startWolfVote(message.channel);
-      return;
-    }
-
-    // 其他回答 → 下一個人
-    await advanceTurn(message.channel);
-  },
-
-  async wwp(message) {
-    if (state.phase !== 'playing') return;
-    const currentPlayerId = state.order[state.orderIndex];
-    if (message.author.id !== currentPlayerId) return;
-    if (state.turnTimer) { clearTimeout(state.turnTimer); state.turnTimer = null; }
-    await message.channel.send({ embeds: [e(`⏭️ **${findPlayer(currentPlayerId).name}** 跳過了這回合。`)] });
-    await advanceTurn(message.channel);
-  },
-
-  async wwq(message) {
-    if (state.phase === 'idle') return message.reply({ embeds: [e('❌ 目前沒有進行中的狼人真言局！')] });
+  async wq(message) {
+    if (state.phase === 'idle') return message.reply({ embeds: [e('❌ 目前沒有進行中的狼人殺局！')] });
     const isHost = message.author.id === state.hostId;
     const isAdmin = message.author.id === process.env.ANNOUNCE_ADMIN_ID;
-    const isPlayer = state.players.some(p => p.id === message.author.id);
-    if (!isHost && !isAdmin && !isPlayer) return message.reply({ embeds: [e('❌ 只有參加的玩家才能取消遊戲！')] });
+    if (!isHost && !isAdmin) return message.reply({ embeds: [e('❌ 只有主持人或管理員才能取消遊戲！')] });
     const roleList = state.players.filter(p => p.role).map(p => `${p.name} — ${ROLE_NAMES[p.role]}`).join('\n');
-    const wordInfo = state.word ? `\n🔑 答案是：**${state.word}**` : '';
+    await removeAllDeadRoles();
     reset();
-    message.channel.send({ embeds: [e(`🚫 **${message.member.displayName}** 取消了狼人真言！${wordInfo}\n\n${roleList ? `📋 角色公布：\n${roleList}` : ''}`)] });
+    message.channel.send({ embeds: [e(`🚫 **${message.member.displayName}** 取消了這局狼人殺！\n\n${roleList ? `📋 角色公布：\n${roleList}` : ''}\n\n輸入 \`!ws\` 可以重新開局！`)] });
   },
 
-  async wwl(message) {
-    if (state.phase === 'idle') return message.reply({ embeds: [e('❌ 目前沒有進行中的狼人真言局！')] });
+  async wl(message) {
+    if (state.phase === 'idle') return message.reply({ embeds: [e('❌ 目前沒有進行中的狼人殺局！')] });
     const pi = state.players.findIndex(p => p.id === message.author.id);
-    if (pi === -1) return message.reply({ embeds: [e('❌ 你沒有加入這局狼人真言！')] });
+    if (pi === -1) return message.reply({ embeds: [e('❌ 你沒有加入這局狼人殺！')] });
     const playerName = message.member.displayName;
+    const wasHost = message.author.id === state.hostId;
 
     if (state.phase === 'waiting') {
       state.players.splice(pi, 1);
-      if (message.author.id === state.hostId && state.players.length > 0) {
+      // 主持人離開 → 轉移給下一個人
+      if (wasHost && state.players.length > 0) {
         state.hostId = state.players[0].id;
-        return message.channel.send({ embeds: [e(`👋 **${playerName}** 離開了！\n👑 主持人轉移給 **${state.players[0].name}**`)] });
+        await message.channel.send({ embeds: [e(`👋 **${playerName}** 離開了狼人殺！\n👑 主持人轉移給 **${state.players[0].name}**\n\n目前玩家（${state.players.length}人）：${state.players.map(p => p.name).join('、')}`)] });
+      } else {
+        await message.channel.send({ embeds: [e(`👋 **${playerName}** 離開了狼人殺！\n目前玩家（${state.players.length}人）：${state.players.map(p => p.name).join('、') || '無'}`)] });
       }
-      if (state.players.length === 0) { reset(); return; }
-      return message.channel.send({ embeds: [e(`👋 **${playerName}** 離開了！\n目前玩家（${state.players.length}人）：${state.players.map(p => p.name).join('、')}`)] });
+      if (state.players.length === 0) reset();
+      return;
     }
 
-    const roleList = state.players.filter(p => p.role).map(p => `${p.name} — ${ROLE_NAMES[p.role]}`).join('\n');
-    const wordInfo = state.word ? `\n🔑 答案是：**${state.word}**` : '';
-    reset();
-    message.channel.send({ embeds: [e(`👋 **${playerName}** 離開了，遊戲中斷！${wordInfo}\n\n📋 角色公布：\n${roleList}`)] });
+    // 遊戲中離開 = 死亡
+    const player = state.players[pi];
+    player.alive = false;
+    player.causeOfDeath = 'leave';
+    await addDeadRole(player.id);
+
+    // 主持人離開 → 轉移給下一個活著的人
+    if (wasHost) {
+      const nextHost = getAlivePlayers().find(p => p.id !== message.author.id);
+      if (nextHost) {
+        state.hostId = nextHost.id;
+        await message.channel.send({ embeds: [e(`👋 **${playerName}** 離開了遊戲，視為死亡。\n👑 主持人轉移給 **${nextHost.name}**`)] });
+      } else {
+        await message.channel.send({ embeds: [e(`👋 **${playerName}** 離開了遊戲，視為死亡。`)] });
+      }
+    } else {
+      await message.channel.send({ embeds: [e(`👋 **${playerName}** 離開了遊戲，視為死亡。`)] });
+    }
+
+    const win = checkWin();
+    if (win) await announceWin(message.channel, win);
   },
 };
 
