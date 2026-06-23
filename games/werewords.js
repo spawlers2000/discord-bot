@@ -128,6 +128,7 @@ async function startTurn(channel) {
 
 // 推進回合
 async function advanceTurn(channel) {
+  if (state.phase !== 'playing') return;
   state.orderIndex++;
   if (state.orderIndex >= state.order.length) {
     state.orderIndex = 0;
@@ -320,13 +321,13 @@ const commands = {
       new ButtonBuilder().setCustomId(`timelimit_${tsTime}_300`).setLabel('⏱️ 5 分鐘').setStyle(ButtonStyle.Primary),
     );
     const timeMsg = await message.channel.send({
-      embeds: [e(`⏱️ **主持人請選擇每回合限時：**`)],
+      embeds: [e(`⏱️ **村長請選擇每回合限時：**`)],
       components: [timeRow],
     });
 
     state.turnTimeLimit = await new Promise((resolve) => {
       const collector = timeMsg.createMessageComponentCollector({
-        filter: i => i.customId.startsWith(`timelimit_${tsTime}_`) && i.user.id === state.hostId,
+        filter: i => i.customId.startsWith(`timelimit_${tsTime}_`) && i.user.id === state.mayorId,
         max: 1, time: 60000,
       });
       collector.on('collect', async (i) => {
@@ -337,7 +338,7 @@ const commands = {
       });
       collector.on('end', (c) => {
         if (c.size === 0) {
-          timeMsg.edit({ embeds: [e('⏱️ 主持人超時，預設不限時')], components: [] }).catch(() => {});
+          timeMsg.edit({ embeds: [e('⏱️ 村長超時，預設不限時')], components: [] }).catch(() => {});
           resolve(0);
         }
       });
@@ -413,19 +414,11 @@ const commands = {
     // 如果等待期間被取消了，中止
     if (state.phase === 'idle') return;
 
-    // 如果設定期間有人離開，重新分配角色
+    // 如果設定期間有人離開導致人數不足，中止
     if (state.players.length < 4) {
       reset();
-      return message.channel.send({ embeds: [e('❌ 玩家不足 4 人，遊戲取消！')] });
+      return message.channel.send({ embeds: [e('❌ 設定期間有人離開，玩家不足 4 人，遊戲取消！')] });
     }
-    const currentConfig = getRoleConfig(state.players.length);
-    const newRoles = [];
-    for (const [role, num] of Object.entries(currentConfig)) { for (let i = 0; i < num; i++) newRoles.push(role); }
-    const newShuffled = shuffle(newRoles);
-    state.players.forEach((p, i) => { p.role = newShuffled[i]; });
-
-    const newMayor = state.players.find(p => p.role === 'mayor');
-    state.mayorId = newMayor.id;
 
     // 私訊角色 + 詞彙
     for (const p of state.players) {
