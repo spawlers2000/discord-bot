@@ -113,7 +113,8 @@ async function startTurn(channel) {
   }).join('\n');
 
   await channel.send({
-    embeds: [e(`👑 村長：**${mayor.name}**\n\n📋 提問順序：\n${orderList}\n\n🎯 輪到 <@${currentPlayerId}>！\n用 \`!wwg 內容\` 提問或猜詞，或 \`!wwp\` 跳過\n\n第 ${state.round} / ${state.maxRounds} 輪${timeInfo}`)],
+    content: `<@${currentPlayerId}>`,
+    embeds: [e(`👑 村長：**${mayor.name}**\n\n📋 提問順序：\n${orderList}\n\n🎯 輪到 **${findPlayer(currentPlayerId).name}**！\n用 \`!wwg 內容\` 提問或猜詞，或 \`!wwp\` 跳過\n\n第 ${state.round} / ${state.maxRounds} 輪${timeInfo}`)],
   });
 
   if (state.turnTimeLimit > 0) {
@@ -312,7 +313,20 @@ const commands = {
     state.mayorId = mayor.id;
     state.guild = message.guild;
 
-    // 主持人選擇限時
+    // 1. 先私訊角色給每個人（還沒有詞彙）
+    for (const p of state.players) {
+      try {
+        const member = await message.guild.members.fetch(p.id);
+        await member.send({ embeds: [e(`你的角色是：${ROLE_NAMES[p.role]}`)] });
+      } catch {
+        await message.channel.send({ embeds: [e(`⚠️ 無法私訊 ${p.name}！`)] });
+      }
+    }
+
+    // 2. 公布村長
+    await message.channel.send({ embeds: [e(`🔮 **角色已分配！請查看 DM**\n\n👑 村長是：**${mayor.name}**`)] });
+
+    // 3. 村長選擇限時
     const tsTime = Date.now();
     const timeRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`timelimit_${tsTime}_0`).setLabel('⏳ 不限時').setStyle(ButtonStyle.Secondary),
@@ -321,6 +335,7 @@ const commands = {
       new ButtonBuilder().setCustomId(`timelimit_${tsTime}_300`).setLabel('⏱️ 5 分鐘').setStyle(ButtonStyle.Primary),
     );
     const timeMsg = await message.channel.send({
+      content: `<@${mayor.id}>`,
       embeds: [e(`⏱️ **村長請選擇每回合限時：**`)],
       components: [timeRow],
     });
@@ -348,14 +363,15 @@ const commands = {
     // 如果等待期間被取消了，中止
     if (state.phase === 'idle') return;
 
-    // 頻道內讓村長設定詞彙
+    // 4. 頻道內讓村長設定詞彙
     const ts = Date.now();
     const setupRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`wordsetup_${ts}_custom`).setLabel('✏️ 自訂詞彙').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`wordsetup_${ts}_random`).setLabel('🎲 隨機選詞').setStyle(ButtonStyle.Secondary),
     );
     const setupMsg = await message.channel.send({
-      embeds: [e(`👑 **等待村長設定詞彙...**\n\n<@${mayor.id}> 請選擇自訂詞彙或隨機選詞。`)],
+      content: `<@${mayor.id}>`,
+      embeds: [e(`👑 **等待村長設定詞彙...**`)],
       components: [setupRow],
     });
 
@@ -367,7 +383,7 @@ const commands = {
       collector.on('collect', async (i) => {
         if (i.customId === `wordsetup_${ts}_random`) {
           const w = DEFAULT_WORDS[Math.floor(Math.random() * DEFAULT_WORDS.length)];
-          await setupMsg.edit({ embeds: [e('👑 村長已設定詞彙！')], components: [] });
+          await setupMsg.edit({ embeds: [e(`👑 村長已設定詞彙！\n\n🎲 來源：**隨機選詞**\n📝 字數：**${w.length} 個字**`)], components: [] });
           await i.reply({ embeds: [e(`👑 你設定的詞彙是：**${w}**\n（只有你看得到）`)], ephemeral: true });
           resolve(w);
         } else {
@@ -389,12 +405,12 @@ const commands = {
           try {
             const submitted = await i.awaitModalSubmit({ time: 120000 });
             const w = submitted.fields.getTextInputValue('word_input').trim();
-            await setupMsg.edit({ embeds: [e('👑 村長已設定詞彙！')], components: [] });
+            await setupMsg.edit({ embeds: [e(`👑 村長已設定詞彙！\n\n✏️ 來源：**自訂詞彙**\n📝 字數：**${w.length} 個字**`)], components: [] });
             await submitted.reply({ embeds: [e(`👑 你設定的詞彙是：**${w}**\n（只有你看得到）`)], ephemeral: true });
             resolve(w);
           } catch {
             const w = DEFAULT_WORDS[Math.floor(Math.random() * DEFAULT_WORDS.length)];
-            await setupMsg.edit({ embeds: [e('👑 村長超時，已隨機選詞！')], components: [] });
+            await setupMsg.edit({ embeds: [e(`👑 村長超時，已隨機選詞！\n\n🎲 來源：**隨機選詞**\n📝 字數：**${w.length} 個字**`)], components: [] });
             resolve(w);
           }
         }
@@ -402,7 +418,7 @@ const commands = {
       collector.on('end', (c) => {
         if (c.size === 0) {
           const w = DEFAULT_WORDS[Math.floor(Math.random() * DEFAULT_WORDS.length)];
-          setupMsg.edit({ embeds: [e('👑 村長超時，已隨機選詞！')], components: [] }).catch(() => {});
+          setupMsg.edit({ embeds: [e(`👑 村長超時，已隨機選詞！\n\n🎲 來源：**隨機選詞**\n📝 字數：**${w.length} 個字**`)], components: [] }).catch(() => {});
           resolve(w);
         }
       });
@@ -420,23 +436,17 @@ const commands = {
       return message.channel.send({ embeds: [e('❌ 設定期間有人離開，玩家不足 4 人，遊戲取消！')] });
     }
 
-    // 私訊角色 + 詞彙
+    // 5. 私訊詞彙給村長、狼人、先知
     for (const p of state.players) {
-      try {
-        const member = await message.guild.members.fetch(p.id);
-        if (p.role === 'mayor') {
-          await member.send({ embeds: [e(`你的角色是：${ROLE_NAMES[p.role]}\n\n🔑 魔法咒語是：**${state.word}**`)] });
-        } else if (p.role === 'wolf' || p.role === 'seer') {
-          await member.send({ embeds: [e(`你的角色是：${ROLE_NAMES[p.role]}\n\n🔑 魔法咒語是：**${state.word}**`)] });
-        } else {
-          await member.send({ embeds: [e(`你的角色是：${ROLE_NAMES[p.role]}`)] });
-        }
-      } catch {
-        await message.channel.send({ embeds: [e(`⚠️ 無法私訊 ${p.name}！`)] });
+      if (p.role === 'mayor' || p.role === 'wolf' || p.role === 'seer') {
+        try {
+          const member = await message.guild.members.fetch(p.id);
+          await member.send({ embeds: [e(`🔑 魔法咒語是：**${state.word}**`)] });
+        } catch {}
       }
     }
 
-    // 設定提問順序（不含村長）
+    // 6. 設定提問順序（不含村長）
     state.order = shuffle(state.players.filter(p => p.role !== 'mayor').map(p => p.id));
     state.orderIndex = 0; state.round = 1; state.phase = 'playing';
 
