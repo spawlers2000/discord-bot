@@ -2,8 +2,7 @@ import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'disc
 
 const GOLD = 0xFFD700;
 const e = (text) => new EmbedBuilder().setColor(GOLD).setDescription(text);
-//
-//
+
 // ─── 角色配置 ───
 const ROLE_CONFIGS = {
   6:  { wolf: 2, seer: 1, witch: 1, hunter: 0, guard: 0, villager: 2 },

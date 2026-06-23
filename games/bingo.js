@@ -75,7 +75,8 @@ async function sendTurnMessage(channel, playerId) {
   );
 
   const btnMsg = await channel.send({
-    embeds: [e(`🎲 輪到 <@${playerId}> 叫號！請輸入 \`!bc 數字\``)],
+    content: `<@${playerId}>`,
+    embeds: [e(`🎲 輪到 **${state.players.find(p => p.id === playerId)?.name}** 叫號！請輸入 \`!bc 數字\``)],
     components: [row],
   });
   state.btnMsg = btnMsg;

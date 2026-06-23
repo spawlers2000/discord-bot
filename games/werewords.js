@@ -234,9 +234,11 @@ async function startWolfVote(channel) {
     rows.push(row);
   }
 
-  const wolfNames = wolves.map(w => `<@${w.id}>`).join('、');
+  const wolfMentions = wolves.map(w => `<@${w.id}>`).join(' ');
+  const wolfDisplayNames = wolves.map(w => `**${w.name}**`).join('、');
   const msg = await channel.send({
-    embeds: [e(`🐺 **狼人投票時間！**\n\n${wolfNames}，猜猜誰是先知？\n猜中 → 狼人勝利！猜不中 → 好人勝利！`)],
+    content: wolfMentions,
+    embeds: [e(`🐺 **狼人投票時間！**\n\n${wolfDisplayNames}，猜猜誰是先知？\n猜中 → 狼人勝利！猜不中 → 好人勝利！`)],
     components: rows,
   });
 

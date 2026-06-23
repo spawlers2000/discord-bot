@@ -80,7 +80,7 @@ const commands = {
 
     const orderNames = state.order.map((id, i) => `${i + 1}. ${state.players.find(p => p.id === id).name}`).join('\n');
     const firstId = state.order[0];
-    message.channel.send({ embeds: [e(`💣 **終極密碼開始！**\n\n密碼範圍：**1 ~ 100**\n\n📋 猜號順序：\n${orderNames}\n\n🎯 輪到 <@${firstId}> 猜！請輸入 \`!zg 數字\``)] });
+    message.channel.send({ content: `<@${firstId}>`, embeds: [e(`💣 **終極密碼開始！**\n\n密碼範圍：**1 ~ 100**\n\n📋 猜號順序：\n${orderNames}\n\n🎯 輪到 **${state.players.find(p => p.id === firstId).name}** 猜！請輸入 \`!zg 數字\``)] });
   },
 
   async zg(message, args) {
@@ -98,7 +98,7 @@ const commands = {
     if (num === state.secret) {
       await addBomb(message.author.id, player.name);
       await addParticipation(state.players);
-      await message.channel.send({ embeds: [e(`💥💥💥 **爆炸！！！**\n\n<@${message.author.id}> **${player.name}** 踩到了終極密碼 **${state.secret}**！\n\n💀 **${player.name}** 爆炸 +1\n\n輸入 \`!zr\` 查看爆炸排行榜\n輸入 \`!zs\` 開始新一局！`)] });
+      await message.channel.send({ content: `<@${message.author.id}>`, embeds: [e(`💥💥💥 **爆炸！！！**\n\n**${player.name}** 踩到了終極密碼 **${state.secret}**！\n\n💀 **${player.name}** 爆炸 +1\n\n輸入 \`!zr\` 查看爆炸排行榜\n輸入 \`!zs\` 開始新一局！`)] });
       reset(); return;
     }
 
@@ -111,11 +111,11 @@ const commands = {
     if (state.min === state.max) {
       await addBomb(nextId, nextPlayer.name);
       await addParticipation(state.players);
-      await message.channel.send({ embeds: [e(`🔢 **${player.name}** 猜了 **${num}**\n\n📏 範圍縮小為：**${state.min} ~ ${state.max}**\n\n💥💥💥 **爆炸！！！**\n\n<@${nextId}> **${nextPlayer.name}** 無路可逃，踩到終極密碼 **${state.secret}**！\n\n💀 **${nextPlayer.name}** 爆炸 +1\n\n輸入 \`!zr\` 查看爆炸排行榜\n輸入 \`!zs\` 開始新一局！`)] });
+      await message.channel.send({ content: `<@${nextId}>`, embeds: [e(`🔢 **${player.name}** 猜了 **${num}**\n\n📏 範圍縮小為：**${state.min} ~ ${state.max}**\n\n💥💥💥 **爆炸！！！**\n\n**${nextPlayer.name}** 無路可逃，踩到終極密碼 **${state.secret}**！\n\n💀 **${nextPlayer.name}** 爆炸 +1\n\n輸入 \`!zr\` 查看爆炸排行榜\n輸入 \`!zs\` 開始新一局！`)] });
       reset(); return;
     }
 
-    message.channel.send({ embeds: [e(`🔢 **${player.name}** 猜了 **${num}**\n\n📏 範圍縮小為：**${state.min} ~ ${state.max}**\n\n🎯 輪到 <@${nextId}> 猜！請輸入 \`!zg 數字\``)] });
+    message.channel.send({ content: `<@${nextId}>`, embeds: [e(`🔢 **${player.name}** 猜了 **${num}**\n\n📏 範圍縮小為：**${state.min} ~ ${state.max}**\n\n🎯 輪到 **${nextPlayer.name}** 猜！請輸入 \`!zg 數字\``)] });
   },
 
   async zl(message) {
