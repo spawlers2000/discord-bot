@@ -1,3 +1,4 @@
+//games/bingo.js
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import BingoRecord from './models/BingoRecord.js';
 
