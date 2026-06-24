@@ -3,7 +3,7 @@ import BingoRecord from './models/BingoRecord.js';
 
 const GOLD = 0xFFD700;
 const e = (text) => new EmbedBuilder().setColor(GOLD).setDescription(text);
-
+//
 // ─── 狀態 ───
 const state = {
   phase: 'idle', hostId: null, channelId: null,
