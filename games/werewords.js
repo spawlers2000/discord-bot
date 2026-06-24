@@ -1,3 +1,4 @@
+//games/werewords.js
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder } from 'discord.js';
 
 const GOLD = 0xFFD700;
