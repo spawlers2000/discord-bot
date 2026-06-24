@@ -1,9 +1,8 @@
-//games/werewords.js
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, MessageFlags } from 'discord.js';
 
 const GOLD = 0xFFD700;
 const e = (text) => new EmbedBuilder().setColor(GOLD).setDescription(text);
-// 
+
 // ─── 內建詞庫（300+）───
 const DEFAULT_WORDS = [
   // 食物飲料
@@ -172,11 +171,11 @@ async function startTurn(channel) {
     try {
       const player = findPlayer(i.user.id);
       if (!player || player.role !== 'seer') {
-        return i.reply({ embeds: [e('❌ 你無法使用這個技能！')], ephemeral: true });
+        return i.reply({ embeds: [e('❌ 你無法使用這個技能！')], flags: MessageFlags.Ephemeral });
       }
 
       // 先 defer 避免超時
-      await i.deferReply({ ephemeral: true });
+      await i.deferReply({ flags: MessageFlags.Ephemeral });
 
       // 先知選擇要抓的人
       const candidates = state.players.filter(p => p.id !== i.user.id && p.role !== 'mayor');
@@ -230,7 +229,7 @@ async function startTurn(channel) {
       }
     } catch (err) {
       console.error('[狼人真言] 抓狼按鈕錯誤:', err);
-      i.reply({ embeds: [e('❌ 發生錯誤，請再試一次')], ephemeral: true }).catch(() => {});
+      i.reply({ embeds: [e('❌ 發生錯誤，請再試一次')], flags: MessageFlags.Ephemeral }).catch(() => {});
     }
   });
   state.collectors.push(catchCollector);
@@ -368,7 +367,7 @@ async function startVillagerVote(channel) {
 
   collector.on('collect', async (i) => {
     if (i.customId === `cvoteconfirm_${ts}`) {
-      if (i.user.id !== state.hostId) return i.reply({ embeds: [e('❌ 只有主持人才能確認結算！')], ephemeral: true });
+      if (i.user.id !== state.hostId) return i.reply({ embeds: [e('❌ 只有主持人才能確認結算！')], flags: MessageFlags.Ephemeral });
       collector.stop();
       await i.update({ components: [] });
       const tally = {};
@@ -392,7 +391,7 @@ async function startVillagerVote(channel) {
       }
       reset(); return;
     }
-    if (!voterIds.has(i.user.id)) return i.reply({ embeds: [e('❌ 你不在這局遊戲中！')], ephemeral: true });
+    if (!voterIds.has(i.user.id)) return i.reply({ embeds: [e('❌ 你不在這局遊戲中！')], flags: MessageFlags.Ephemeral });
     const targetId = i.customId.replace(`cvote_${ts}_`, '');
     votes.set(i.user.id, targetId);
     await i.update({ embeds: [buildVoteEmbed()], components: buildComponents() });
@@ -534,13 +533,14 @@ const commands = {
     const word = await new Promise((resolve) => {
       const collector = setupMsg.createMessageComponentCollector({
         filter: i => i.customId.startsWith(`wordsetup_${ts}_`) && i.user.id === mayor.id,
-        max: 1, time: 120000,
+        time: 120000,
       });
       collector.on('collect', async (i) => {
         if (i.customId === `wordsetup_${ts}_random`) {
+          collector.stop();
           const w = DEFAULT_WORDS[Math.floor(Math.random() * DEFAULT_WORDS.length)];
-          await setupMsg.edit({ embeds: [e(`👑 村長已設定詞彙！\n\n🎲 來源：**隨機選詞**\n📝 字數：**${w.length} 個字**`)], components: [] });
-          await i.reply({ embeds: [e(`👑 你設定的詞彙是：**${w}**\n（只有你看得到）`)], ephemeral: true });
+          await i.update({ embeds: [e(`👑 村長已設定詞彙！\n\n🎲 來源：**隨機選詞**\n📝 字數：**${w.length} 個字**`)], components: [] });
+          await i.followUp({ embeds: [e(`👑 你設定的詞彙是：**${w}**\n（只有你看得到）`)], flags: MessageFlags.Ephemeral });
           resolve(w);
         } else {
           const modal = new ModalBuilder()
@@ -560,19 +560,18 @@ const commands = {
           await i.showModal(modal);
           try {
             const submitted = await i.awaitModalSubmit({ time: 120000 });
+            collector.stop();
             const w = submitted.fields.getTextInputValue('word_input').trim();
             await setupMsg.edit({ embeds: [e(`👑 村長已設定詞彙！\n\n✏️ 來源：**自訂詞彙**\n📝 字數：**${w.length} 個字**`)], components: [] });
-            await submitted.reply({ embeds: [e(`👑 你設定的詞彙是：**${w}**\n（只有你看得到）`)], ephemeral: true });
+            await submitted.reply({ embeds: [e(`👑 你設定的詞彙是：**${w}**\n（只有你看得到）`)], flags: MessageFlags.Ephemeral });
             resolve(w);
           } catch {
-            const w = DEFAULT_WORDS[Math.floor(Math.random() * DEFAULT_WORDS.length)];
-            await setupMsg.edit({ embeds: [e(`👑 村長超時，已隨機選詞！\n\n🎲 來源：**隨機選詞**\n📝 字數：**${w.length} 個字**`)], components: [] });
-            resolve(w);
+            // Modal 被取消，不做任何事，讓村長可以再按一次按鈕
           }
         }
       });
-      collector.on('end', (c) => {
-        if (c.size === 0) {
+      collector.on('end', (c, reason) => {
+        if (reason === 'time') {
           const w = DEFAULT_WORDS[Math.floor(Math.random() * DEFAULT_WORDS.length)];
           setupMsg.edit({ embeds: [e(`👑 村長超時，已隨機選詞！\n\n🎲 來源：**隨機選詞**\n📝 字數：**${w.length} 個字**`)], components: [] }).catch(() => {});
           resolve(w);
