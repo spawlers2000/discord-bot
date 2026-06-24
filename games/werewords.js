@@ -3,14 +3,49 @@ import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilde
 const GOLD = 0xFFD700;
 const e = (text) => new EmbedBuilder().setColor(GOLD).setDescription(text);
 
-// ─── 內建詞庫 ───
+// ─── 內建詞庫（300+）───
 const DEFAULT_WORDS = [
-  '蘋果','月亮','咖啡','恐龍','鑽石','雨傘','彩虹','鋼琴','巧克力','企鵝',
-  '火山','機器人','外星人','太陽眼鏡','泡麵','棒球','聖誕節','章魚','瀑布','電梯',
-  '冰淇淋','飛碟','木乃伊','溜滑梯','氣球','摩天輪','仙人掌','藍芽','漢堡','金字塔',
-  '北極熊','橡皮擦','望遠鏡','指南針','蘑菇','稻草人','魔術師','珊瑚','口紅','吊橋',
-  '貓頭鷹','滅火器','鬧鐘','日記本','螢火蟲','迷宮','拼圖','蹺蹺板','竹蜻蜓','風箏',
-  '手術刀','降落傘','樹懶','考古學家','潛水艇','高跟鞋','打字機','龍捲風','防毒面具','萬花筒',
+  // 食物飲料
+  '蘋果','巧克力','漢堡','泡麵','冰淇淋','珍珠奶茶','壽司','披薩','薯條','雞排',
+  '棉花糖','爆米花','咖啡','拉麵','火鍋','牛排','蛋塔','芒果','西瓜','草莓',
+  '麻辣鍋','鹹酥雞','豆花','臭豆腐','蔥油餅','水餃','湯圓','月餅','鳳梨酥','芋圓',
+  // 動物
+  '企鵝','恐龍','北極熊','貓頭鷹','章魚','螢火蟲','樹懶','海豚','長頸鹿','無尾熊',
+  '變色龍','水母','獨角獸','河馬','紅鶴','穿山甲','海龜','蜂鳥','鯊魚','大象',
+  '孔雀','鱷魚','蝴蝶','浣熊','刺蝟','貓熊','袋鼠','犀牛','蝸牛','螃蟹',
+  // 自然景觀
+  '月亮','彩虹','火山','瀑布','龍捲風','北極光','沙漠','海嘯','日出','銀河',
+  '冰川','珊瑚礁','溫泉','流星','閃電','綠洲','峽谷','雪崩','深海','極光',
+  // 日常物品
+  '雨傘','鑽石','太陽眼鏡','橡皮擦','鬧鐘','口紅','高跟鞋','日記本','指南針','滅火器',
+  '望遠鏡','防毒面具','降落傘','萬花筒','打字機','氣球','風箏','拼圖','蹺蹺板','溜滑梯',
+  '存錢筒','保溫瓶','行李箱','安全帽','夾娃娃機','耳機','隨身碟','馬克杯','暖暖包','自拍棒',
+  '紅包','骰子','放大鏡','計算機','OK繃','指甲剪','迴紋針','便利貼','泡泡紙','創可貼',
+  // 建築地標
+  '金字塔','吊橋','摩天輪','電梯','燈塔','城堡','教堂','鐘樓','摩天大樓','地下鐵',
+  '自由女神','巴黎鐵塔','萬里長城','比薩斜塔','天空樹','雪梨歌劇院','台北101','迪士尼',
+  // 職業人物
+  '魔術師','考古學家','太空人','消防員','偵探','忍者','海盜','機長','廚師','畫家',
+  '小丑','導遊','救生員','氣象播報員','牙醫','法官','特技演員','調酒師','園丁','礦工',
+  // 交通工具
+  '潛水艇','飛碟','直升機','熱氣球','雲霄飛車','纜車','獨木舟','摩托車','帆船','消防車',
+  '冰淇淋車','垃圾車','救護車','坦克','三輪車','滑板','電動滑板車','高鐵','郵輪','太空梭',
+  // 科技電子
+  '機器人','藍芽','投影機','無人機','衛星','虛擬實境','人工智慧','3D列印','觸控螢幕','密碼鎖',
+  // 節慶活動
+  '聖誕節','萬聖節','跨年','中秋節','情人節','端午節','元宵節','母親節','愚人節','感恩節',
+  // 運動遊戲
+  '棒球','保齡球','衝浪','跳傘','攀岩','射箭','西洋棋','桌球','溜冰','躲避球',
+  '飛盤','彈珠台','套圈圈','打地鼠','拔河','跳繩','呼拉圈','踩高蹺','騎馬','滑翔翼',
+  // 抽象概念
+  '時光機','隱形斗篷','許願池','記憶','平行宇宙','夢遊','心電感應','預知未來','迷宮','黑洞',
+  '時差','靈感','默契','直覺','既視感','蝴蝶效應','因果報應','諧音梗','社死','內捲',
+  // 文化娛樂
+  '鋼琴','木乃伊','稻草人','仙人掌','竹蜻蜓','摺紙','魔術方塊','套娃','達摩','招財貓',
+  '風鈴','許願燈','沙漏','水晶球','塔羅牌','捕夢網','幸運草','雪花球','音樂盒','走馬燈',
+  // 台灣特色
+  '夜市','天燈','珍珠','鼎泰豐','九份','阿里山','日月潭','墾丁','媽祖','歌仔戲',
+  '布袋戲','辦桌','機車瀑布','悠遊卡','超商','騎樓','鐵皮屋','檳榔','電音三太子','搶孤',
 ];
 
 const ROLE_NAMES = {
@@ -126,66 +161,76 @@ async function startTurn(channel) {
     components: [catchRow],
   });
 
-  // 抓狼按鈕 collector
+  // 抓狼按鈕 collector（不設 max，讓多人可以嘗試按）
   const catchCollector = turnMsg.createMessageComponentCollector({
     filter: i => i.customId === `catchwolf_${ts}`,
-    max: 1, time: state.turnTimeLimit > 0 ? state.turnTimeLimit : 3600000,
+    time: state.turnTimeLimit > 0 ? state.turnTimeLimit : 3600000,
   });
 
   catchCollector.on('collect', async (i) => {
-    const player = findPlayer(i.user.id);
-    if (!player || player.role !== 'seer') {
-      return i.reply({ embeds: [e('❌ 你無法使用這個技能！')], ephemeral: true });
-    }
-
-    // 先知選擇要抓的人（ephemeral 按鈕）
-    const candidates = state.players.filter(p => p.id !== i.user.id && p.role !== 'mayor');
-    const pickTs = Date.now();
-    const pickRows = [];
-    for (let j = 0; j < candidates.length; j += 5) {
-      const row = new ActionRowBuilder();
-      for (const c of candidates.slice(j, j + 5)) {
-        row.addComponents(
-          new ButtonBuilder()
-            .setCustomId(`pickwolf_${pickTs}_${c.id}`)
-            .setLabel(c.name)
-            .setStyle(ButtonStyle.Secondary)
-        );
+    try {
+      const player = findPlayer(i.user.id);
+      if (!player || player.role !== 'seer') {
+        return i.reply({ embeds: [e('❌ 你無法使用這個技能！')], ephemeral: true });
       }
-      pickRows.push(row);
-    }
 
-    await i.reply({
-      embeds: [e('🔮 **選擇你認為的狼人：**\n\n抓對 → 好人勝利\n抓錯 → 狼人勝利')],
-      components: pickRows,
-      ephemeral: true,
-    });
+      // 先 defer 避免超時
+      await i.deferReply({ ephemeral: true });
 
-    const pickCollector = i.channel.createMessageComponentCollector({
-      filter: pi => pi.customId.startsWith(`pickwolf_${pickTs}_`) && pi.user.id === i.user.id,
-      max: 1, time: 60000,
-    });
-
-    pickCollector.on('collect', async (pi) => {
-      if (state.phase !== 'playing') return;
-      const targetId = pi.customId.replace(`pickwolf_${pickTs}_`, '');
-      const target = findPlayer(targetId);
-      const isWolf = target?.role === 'wolf';
-      const roleList = state.players.map(p => `${p.name} — ${ROLE_NAMES[p.role]}`).join('\n');
-
-      if (state.turnTimer) { clearTimeout(state.turnTimer); state.turnTimer = null; }
-      catchCollector.stop();
-      await turnMsg.edit({ components: [] }).catch(() => {});
-
-      if (isWolf) {
-        await channel.send({ embeds: [e(`🔮 **有人發動了技能，抓到了 ${target.name} 是狼人！**\n\n🔑 答案是：**${state.word}**\n\n🎉🎉🎉 **好人陣營勝利！**\n\n📋 **角色公布：**\n${roleList}`)] });
-      } else {
-        await channel.send({ embeds: [e(`🔮 **有人發動了技能，但 ${target.name} 不是狼人！**\n\n🔑 答案是：**${state.word}**\n\n🐺🐺🐺 **狼人陣營勝利！**\n\n📋 **角色公布：**\n${roleList}`)] });
+      // 先知選擇要抓的人
+      const candidates = state.players.filter(p => p.id !== i.user.id && p.role !== 'mayor');
+      const pickTs = Date.now();
+      const pickRows = [];
+      for (let j = 0; j < candidates.length; j += 5) {
+        const row = new ActionRowBuilder();
+        for (const c of candidates.slice(j, j + 5)) {
+          row.addComponents(
+            new ButtonBuilder()
+              .setCustomId(`pickwolf_${pickTs}_${c.id}`)
+              .setLabel(c.name)
+              .setStyle(ButtonStyle.Secondary)
+          );
+        }
+        pickRows.push(row);
       }
-      await pi.update({ embeds: [e(isWolf ? '✅ 抓對了！' : '❌ 抓錯了！')], components: [] }).catch(() => {});
-      reset();
-    });
-    state.collectors.push(pickCollector);
+
+      const replyMsg = await i.editReply({
+        embeds: [e('🔮 **選擇你認為的狼人：**\n\n抓對 → 好人勝利\n抓錯 → 狼人勝利')],
+        components: pickRows,
+      });
+
+      // 用 awaitMessageComponent 等待先知選人
+      try {
+        const pi = await replyMsg.awaitMessageComponent({
+          filter: pi => pi.customId.startsWith(`pickwolf_${pickTs}_`) && pi.user.id === i.user.id,
+          time: 60000,
+        });
+
+        if (state.phase !== 'playing') return;
+        const targetId = pi.customId.replace(`pickwolf_${pickTs}_`, '');
+        const target = findPlayer(targetId);
+        const isWolf = target?.role === 'wolf';
+        const roleList = state.players.map(p => `${p.name} — ${ROLE_NAMES[p.role]}`).join('\n');
+
+        if (state.turnTimer) { clearTimeout(state.turnTimer); state.turnTimer = null; }
+        catchCollector.stop();
+        await turnMsg.edit({ components: [] }).catch(() => {});
+
+        if (isWolf) {
+          await channel.send({ embeds: [e(`🔮 **有人發動了技能，抓到了 ${target.name} 是狼人！**\n\n🔑 答案是：**${state.word}**\n\n🎉🎉🎉 **好人陣營勝利！**\n\n📋 **角色公布：**\n${roleList}`)] });
+        } else {
+          await channel.send({ embeds: [e(`🔮 **有人發動了技能，但 ${target.name} 不是狼人！**\n\n🔑 答案是：**${state.word}**\n\n🐺🐺🐺 **狼人陣營勝利！**\n\n📋 **角色公布：**\n${roleList}`)] });
+        }
+        await pi.update({ embeds: [e(isWolf ? '✅ 抓對了！' : '❌ 抓錯了！')], components: [] }).catch(() => {});
+        reset();
+      } catch {
+        // 先知超時沒選人
+        await i.editReply({ embeds: [e('⏰ 超時，取消抓狼。')], components: [] }).catch(() => {});
+      }
+    } catch (err) {
+      console.error('[狼人真言] 抓狼按鈕錯誤:', err);
+      i.reply({ embeds: [e('❌ 發生錯誤，請再試一次')], ephemeral: true }).catch(() => {});
+    }
   });
   state.collectors.push(catchCollector);
 
