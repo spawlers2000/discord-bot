@@ -6,7 +6,7 @@ import werewordsCommands from './werewords.js';
 // 賓果指令對應
 const bingoMap = { bs: 'bs', bj: 'bj', bb: 'bb', bc: 'bc', bl: 'bl', bq: 'bq', br: 'br' };
 // 終極密碼指令對應
-const bombMap = { zs: 'zs', zj: 'zj', zb: 'zb', zg: 'zg', zl: 'zl', zq: 'zq', zr: 'zr', zp: 'zp' };
+const bombMap = { zs: 'zs', zj: 'zj', zb: 'zb', zg: 'zg', zl: 'zl', zq: 'zq', zr: 'zr' };
 // 狼人殺指令對應
 const wolfMap = { ws: 'ws', wj: 'wj', wb: 'wb', wq: 'wq', wl: 'wl' };
 // 狼人真言指令對應

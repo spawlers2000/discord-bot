@@ -145,22 +145,18 @@ const commands = {
   },
 
   async zr(message) {
-    const ranking = await getRanking();
-    if (!ranking.length) return message.reply({ embeds: [e('📊 還沒有人爆炸過，快來玩 `!zs`！')] });
+    const records = await BombRecord.find({ played: { $gt: 0 } }).lean();
+    if (!records.length) return message.reply({ embeds: [e('📊 還沒有人玩過，快來玩 `!zs`！')] });
+    // 按爆炸率排序（高到低）
+    const sorted = records.map(entry => ({
+      ...entry,
+      rate: entry.played > 0 ? (entry.count / entry.played) * 100 : 0,
+    })).sort((a, b) => b.rate - a.rate).slice(0, 10);
     const medals = ['🥇', '🥈', '🥉'];
-    const list = ranking.map((entry, i) => `${medals[i] || `${i + 1}.`} ${entry.name} — 💥 ${entry.count} 次`).join('\n');
-    message.channel.send({ embeds: [e(`💣 **終極密碼爆炸排行榜**\n\n${list}`)] });
-  },
-
-  async zp(message) {
-    const ranking = await getFullRanking();
-    if (!ranking.length) return message.reply({ embeds: [e('📊 還沒有人玩過，快來玩 `!zs`！')] });
-    const medals = ['🥇', '🥈', '🥉'];
-    const list = ranking.map((entry, i) => {
-      const rate = entry.played > 0 ? Math.round((entry.count / entry.played) * 100) : 0;
-      return `${medals[i] || `${i + 1}.`} ${entry.name} — 🎮 ${entry.played} 場 ｜ 💥 ${entry.count} 爆 ｜ 💀 ${rate}%`;
+    const list = sorted.map((entry, i) => {
+      return `${medals[i] || `${i + 1}.`} ${entry.name} — 🎮 ${entry.played} 場 ｜ 💥 ${entry.count} 爆 ｜ 💀 ${Math.round(entry.rate)}%`;
     }).join('\n');
-    message.channel.send({ embeds: [e(`💣 **終極密碼綜合排行榜**\n\n${list}\n\n🎮 參與場數 ｜ 💥 爆炸次數 ｜ 💀 爆炸率`)] });
+    message.channel.send({ embeds: [e(`💣 **終極密碼排行榜**\n\n${list}\n\n🎮 參與場數 ｜ 💥 爆炸次數 ｜ 💀 爆炸率`)] });
   },
 };
 
