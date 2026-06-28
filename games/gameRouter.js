@@ -13,7 +13,7 @@ const wolfMap = { ws: 'ws', wj: 'wj', wb: 'wb', wq: 'wq', wl: 'wl' };
 // 狼人真言指令對應
 const wwMap = { wws: 'wws', wwj: 'wwj', wwb: 'wwb', wwg: 'wwg', wwp: 'wwp', wwq: 'wwq', wwl: 'wwl' };
 // 誰是臥底指令對應
-const ucMap = { us: 'us', uj: 'uj', ub: 'ub', uq: 'uq', ul: 'ul' };
+const ucMap = { us: 'us', uj: 'uj', ub: 'ub', ud: 'ud', uq: 'uq', ul: 'ul' };
 
 export function setupGameRouter(client) {
   client.on('messageCreate', async (message) => {

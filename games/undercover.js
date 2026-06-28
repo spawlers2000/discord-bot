@@ -46,18 +46,19 @@ const state = {
   round: 1, maxRounds: 0,
   wordPair: null,
   votes: new Map(), voteMsg: null,
-  collectors: [],
+  collectors: [], records: [], describeTimer: null,
 };
 
 function reset() {
   state.collectors.forEach(c => { try { c.stop(); } catch {} });
+  if (state.describeTimer) { clearTimeout(state.describeTimer); state.describeTimer = null; }
   Object.assign(state, {
     phase: 'idle', hostId: null, channelId: null, guild: null,
     players: [], order: [], orderIndex: 0,
     round: 1, maxRounds: 0,
     wordPair: null,
     votes: new Map(), voteMsg: null,
-    collectors: [],
+    collectors: [], records: [], describeTimer: null,
   });
 }
 
@@ -99,14 +100,12 @@ async function startDescribePhase(channel) {
 async function startDescribeTurn(channel) {
   if (state.phase !== 'describing') return;
   if (state.orderIndex >= state.order.length) {
-    // 所有人都描述完了，進入投票
     await startVoting(channel);
     return;
   }
 
   const currentId = state.order[state.orderIndex];
   const currentPlayer = findPlayer(currentId);
-  const ts = Date.now();
 
   const orderList = state.order.map((id, i) => {
     const p = findPlayer(id);
@@ -115,43 +114,65 @@ async function startDescribeTurn(channel) {
     return `${arrow}${i + 1}. ${p.name} ${i < state.orderIndex ? status : ''}`;
   }).join('\n');
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`describe_done_${ts}`)
-      .setLabel('✅ 描述完成')
-      .setStyle(ButtonStyle.Success)
-  );
-
-  const msg = await channel.send({
+  await channel.send({
     content: `<@${currentId}>`,
-    embeds: [e(`📋 描述順序：\n${orderList}\n\n🎯 輪到 **${currentPlayer.name}** 描述！\n\n請用一句話描述你的詞彙，說完按「✅ 描述完成」\n\n第 ${state.round} 輪`)],
-    components: [row],
+    embeds: [e(`📋 描述順序：\n${orderList}\n\n🎯 輪到 **${currentPlayer.name}** 描述！\n\n請輸入 \`!ud 你的描述\`\n\n第 ${state.round} 輪 ｜ ⏱️ 限時 2 分鐘`)],
   });
 
-  const collector = msg.createMessageComponentCollector({
-    filter: i => i.customId === `describe_done_${ts}`,
-    time: 600000,
-  });
-
-  collector.on('collect', async (i) => {
-    if (i.user.id !== currentId) {
-      return i.reply({ embeds: [e('❌ 還沒輪到你！')], flags: MessageFlags.Ephemeral });
-    }
-    collector.stop();
-    await i.update({ components: [] });
+  // 2 分鐘限時
+  state.describeTimer = setTimeout(async () => {
+    if (state.phase !== 'describing') return;
+    state.records.push({ name: currentPlayer.name, round: state.round, description: '（超時未描述）' });
+    await sendRecordsDM(channel.guild);
+    await channel.send({ embeds: [e(`⏰ **${currentPlayer.name}** 超時，自動跳過！`)] });
     state.orderIndex++;
     await startDescribeTurn(channel);
-  });
+  }, 120000);
+}
 
-  collector.on('end', (c, reason) => {
-    if (reason === 'time' && state.phase === 'describing') {
-      msg.edit({ components: [] }).catch(() => {});
-      channel.send({ embeds: [e(`⏰ **${currentPlayer.name}** 超時，自動跳過！`)] });
-      state.orderIndex++;
-      startDescribeTurn(channel);
+// 處理 !ud 指令
+async function handleDescribe(message, args) {
+  if (state.phase !== 'describing') return message.reply({ embeds: [e('❌ 目前不在描述階段！')] });
+  const currentId = state.order[state.orderIndex];
+  if (message.author.id !== currentId) {
+    return message.reply({ embeds: [e(`❌ 現在輪到 **${findPlayer(currentId)?.name}**，還沒輪到你！`)] });
+  }
+  const description = args.join(' ').trim();
+  if (!description) return message.reply({ embeds: [e('❌ 請輸入描述！例如 `!ud 圓圓的可以吃`')] });
+
+  // 清除計時器
+  if (state.describeTimer) { clearTimeout(state.describeTimer); state.describeTimer = null; }
+
+  const player = findPlayer(currentId);
+  state.records.push({ name: player.name, round: state.round, description });
+
+  await message.channel.send({ embeds: [e(`✅ **${player.name}** 描述完成！`)] });
+
+  // DM 累加紀錄給所有玩家
+  await sendRecordsDM(message.guild);
+
+  state.orderIndex++;
+  await startDescribeTurn(message.channel);
+}
+
+// DM 累加描述紀錄給所有玩家
+async function sendRecordsDM(guild) {
+  if (state.records.length === 0) return;
+  let currentRound = 0;
+  let recordText = '📝 **描述紀錄：**\n';
+  for (const r of state.records) {
+    if (r.round !== currentRound) {
+      currentRound = r.round;
+      recordText += `\n**── 第 ${currentRound} 輪 ──**\n`;
     }
-  });
-  state.collectors.push(collector);
+    recordText += `${r.name}：${r.description}\n`;
+  }
+  for (const p of state.players) {
+    try {
+      const member = await guild.members.fetch(p.id);
+      await member.send({ embeds: [e(recordText)] });
+    } catch {}
+  }
 }
 
 // ─── 投票 ───
@@ -320,6 +341,7 @@ async function announceResult(channel, result, lastEliminated) {
   await channel.send({
     embeds: [e(`${title}\n\n🔑 **平民詞彙：${state.wordPair[0]}**\n🔑 **臥底詞彙：${state.wordPair[1]}**\n\n📋 **角色公布：**\n${roleList}`)],
   });
+
   reset();
 }
 
@@ -433,6 +455,10 @@ const commands = {
     });
 
     await startDescribePhase(message.channel);
+  },
+
+  async ud(message, args) {
+    await handleDescribe(message, args);
   },
 
   async uq(message) {

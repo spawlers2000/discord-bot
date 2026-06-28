@@ -59,11 +59,10 @@ export function startAnnounceScheduler(client) {
 function buildAnnounceEmbed() {
   return new EmbedBuilder()
     .setColor(0xFFD700)
-    .setTitle("⚔️　百業戰開始囉！！")
+    .setTitle("⚔️　百業戰提醒！")
     .setDescription(
-      "## 百業戰現在開放！\n" +
-      "趕快揪隊友一起衝！\n\n" +
-      "> 使用 `/隊伍` 快速建立隊伍，開始招募！"
+      "## 即將開始，請前往準備！\n" +
+      "趕快揪隊友一起衝！"
     )
     .setTimestamp()
     .setFooter({ text: "每週六、日 20:25 自動提醒" });

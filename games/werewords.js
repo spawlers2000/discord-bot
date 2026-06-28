@@ -58,6 +58,7 @@ const state = {
   players: [], word: null,
   order: [], orderIndex: 0, round: 1, maxRounds: 5,
   mayorId: null, collectors: [], turnTimer: null, turnTimeLimit: 0,
+  qaRecords: [],
 };
 
 function reset() {
@@ -67,10 +68,32 @@ function reset() {
     phase: 'idle', hostId: null, channelId: null, guild: null,
     players: [], word: null, order: [], orderIndex: 0,
     round: 1, maxRounds: 5, mayorId: null, collectors: [], turnTimer: null, turnTimeLimit: 0,
+    qaRecords: [],
   });
 }
 
 function findPlayer(id) { return state.players.find(p => p.id === id); }
+
+// DM QA紀錄給非村長的玩家
+async function sendQARecords(guild) {
+  if (state.qaRecords.length === 0) return;
+  let currentRound = 0;
+  let recordText = '📝 **提問紀錄：**\n';
+  for (const r of state.qaRecords) {
+    if (r.round !== currentRound) {
+      currentRound = r.round;
+      recordText += `\n**── 第 ${currentRound} 輪 ──**\n`;
+    }
+    recordText += `${r.asker}：「${r.question}」→ ${r.answer}\n`;
+  }
+  for (const p of state.players) {
+    if (p.id === state.mayorId) continue;
+    try {
+      const member = await guild.members.fetch(p.id);
+      await member.send({ embeds: [e(recordText)] });
+    } catch {}
+  }
+}
 function shuffle(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -119,11 +142,15 @@ async function showMayorPanel(channel, content, askerName) {
         embeds: [e(`💬 **${askerName}**：「${content}」\n\n👑 村長回答：**${labels[answer]}**`)],
         components: [],
       });
+      state.qaRecords.push({ round: state.round, asker: askerName, question: content, answer: labels[answer] });
+      // DM 累加 QA 紀錄給非村長的玩家
+      await sendQARecords(channel.guild);
       resolve(answer);
     });
     collector.on('end', (c) => {
       if (c.size === 0) {
         msg.edit({ embeds: [e(`💬 **${askerName}**：「${content}」\n\n👑 村長未回答（超時）`)], components: [] }).catch(() => {});
+        state.qaRecords.push({ round: state.round, asker: askerName, question: content, answer: '⏰ 超時' });
         resolve(null);
       }
     });
@@ -222,6 +249,7 @@ async function startTurn(channel) {
           await channel.send({ embeds: [e(`🔮 **有人發動了技能，但 ${target.name} 不是狼人！**\n\n🔑 答案是：**${state.word}**\n\n🐺🐺🐺 **狼人陣營勝利！**\n\n📋 **角色公布：**\n${roleList}`)] });
         }
         await pi.update({ embeds: [e(isWolf ? '✅ 抓對了！' : '❌ 抓錯了！')], components: [] }).catch(() => {});
+        await sendQARecords(channel.guild);
         reset();
       } catch {
         // 先知超時沒選人
@@ -303,12 +331,14 @@ async function startWolfVote(channel) {
     } else {
       await channel.send({ embeds: [e(`🐺 狼人猜了 ${target.name}，但不是先知！\n\n🎉🎉🎉 **好人陣營勝利！**\n\n📋 **角色公布：**\n${roleList}`)] });
     }
+    await sendQARecords(channel.guild);
     reset();
   });
   collector.on('end', (c) => {
     if (c.size === 0) {
       const roleList = state.players.map(p => `${p.name} — ${ROLE_NAMES[p.role]}`).join('\n');
       channel.send({ embeds: [e(`⏰ 狼人未投票，好人陣營勝利！\n\n📋 **角色公布：**\n${roleList}`)] });
+      sendQARecords(channel.guild);
       reset();
     }
   });
@@ -375,13 +405,13 @@ async function startVillagerVote(channel) {
       const roleList = state.players.map(p => `${p.name} — ${ROLE_NAMES[p.role]}`).join('\n');
       if (Object.keys(tally).length === 0) {
         await channel.send({ embeds: [e(`沒有人投票！\n\n🐺🐺🐺 **狼人陣營勝利！**\n\n📋 **角色公布：**\n${roleList}`)] });
-        reset(); return;
+        await sendQARecords(channel.guild); reset(); return;
       }
       const maxVotes = Math.max(...Object.values(tally));
       const topIds = Object.keys(tally).filter(id => tally[id] === maxVotes);
       if (topIds.length > 1) {
         await channel.send({ embeds: [e(`⚖️ 平票！\n\n🐺🐺🐺 **狼人陣營勝利！**\n\n📋 **角色公布：**\n${roleList}`)] });
-        reset(); return;
+        await sendQARecords(channel.guild); reset(); return;
       }
       const voted = findPlayer(topIds[0]);
       if (voted?.role === 'wolf') {
@@ -389,7 +419,7 @@ async function startVillagerVote(channel) {
       } else {
         await channel.send({ embeds: [e(`😱 **${voted.name}** 被票選出局，但不是狼人！\n\n🐺🐺🐺 **狼人陣營勝利！**\n\n📋 **角色公布：**\n${roleList}`)] });
       }
-      reset(); return;
+      await sendQARecords(channel.guild); reset(); return;
     }
     if (!voterIds.has(i.user.id)) return i.reply({ embeds: [e('❌ 你不在這局遊戲中！')], flags: MessageFlags.Ephemeral });
     const targetId = i.customId.replace(`cvote_${ts}_`, '');
