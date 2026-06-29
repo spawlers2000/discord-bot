@@ -53,12 +53,16 @@ function findPlayer(id) { return state.players.find(p => p.id === id); }
 
 // 死亡角色管理
 async function addDeadRole(playerId) {
-  const roleId = process.env.DEAD_ROLE_ID;
-  if (!roleId || !state.guild) { console.log('[狼人殺] DEAD_ROLE_ID 未設定，跳過死亡角色'); return; }
+  const deadRoleId = process.env.DEAD_ROLE_ID;
+  const wolfRoleId = process.env.WOLF_ROLE_ID;
+  if (!state.guild) return;
   try {
     const member = await state.guild.members.fetch(playerId);
-    await member.roles.add(roleId);
-  } catch (err) { console.error('[狼人殺] 無法加上死亡角色:', err.message); }
+    if (deadRoleId) await member.roles.add(deadRoleId);
+    // 如果是狼人，死亡時移除狼人身分組
+    const player = findPlayer(playerId);
+    if (wolfRoleId && player?.role === 'wolf') await member.roles.remove(wolfRoleId);
+  } catch (err) { console.error('[狼人殺] 角色變更錯誤:', err.message); }
 }
 
 async function removeAllDeadRoles() {
@@ -69,6 +73,30 @@ async function removeAllDeadRoles() {
       const member = await state.guild.members.fetch(p.id);
       await member.roles.remove(roleId);
     } catch (err) { console.error('[狼人殺] 無法移除死亡角色:', err.message); }
+  }
+}
+
+// 狼人身分組管理
+async function addWolfRoles() {
+  const roleId = process.env.WOLF_ROLE_ID;
+  if (!roleId || !state.guild) return;
+  const wolves = state.players.filter(p => p.role === 'wolf');
+  for (const w of wolves) {
+    try {
+      const member = await state.guild.members.fetch(w.id);
+      await member.roles.add(roleId);
+    } catch (err) { console.error('[狼人殺] 無法加上狼人角色:', err.message); }
+  }
+}
+
+async function removeAllWolfRoles() {
+  const roleId = process.env.WOLF_ROLE_ID;
+  if (!roleId || !state.guild) return;
+  for (const p of state.players) {
+    try {
+      const member = await state.guild.members.fetch(p.id);
+      await member.roles.remove(roleId);
+    } catch (err) { console.error('[狼人殺] 無法移除狼人角色:', err.message); }
   }
 }
 function shuffle(arr) {
@@ -646,6 +674,7 @@ async function announceWin(channel, side) {
     await channel.send({ embeds: [e(`🐺🐺🐺 **狼人陣營勝利！**\n\n好人陣營已無力回天！\n\n📋 **角色公布：**\n${roleList}`)] });
   }
   await removeAllDeadRoles();
+  await removeAllWolfRoles();
   reset();
 }
 
@@ -693,6 +722,9 @@ const commands = {
     // 公告
     await message.channel.send({ embeds: [e(`🐺 **狼人殺開始！共 ${count} 人**\n\n角色已透過私訊分配，請查看 DM。\n\n即將進入第一個夜晚...`)] });
 
+    // 給狼人加上身分組（讓他們能看到狼人密語頻道）
+    await addWolfRoles();
+
     // 私訊角色
     for (const p of state.players) {
       try {
@@ -719,6 +751,7 @@ const commands = {
     if (!isHost && !isAdmin) return message.reply({ embeds: [e('❌ 只有主持人或管理員才能取消遊戲！')] });
     const roleList = state.players.filter(p => p.role).map(p => `${p.name} — ${ROLE_NAMES[p.role]}`).join('\n');
     await removeAllDeadRoles();
+    await removeAllWolfRoles();
     reset();
     message.channel.send({ embeds: [e(`🚫 **${message.member.displayName}** 取消了這局狼人殺！\n\n${roleList ? `📋 角色公布：\n${roleList}` : ''}\n\n輸入 \`!ws\` 可以重新開局！`)] });
   },
@@ -748,6 +781,26 @@ const commands = {
     player.alive = false;
     player.causeOfDeath = 'leave';
     await addDeadRole(player.id);
+
+    // 如果是狼人，移除狼人身分組
+    if (player.role === 'wolf') {
+      const wolfRoleId = process.env.WOLF_ROLE_ID;
+      if (wolfRoleId && state.guild) {
+        try {
+          const member = await state.guild.members.fetch(player.id);
+          await member.roles.remove(wolfRoleId);
+        } catch {}
+      }
+    }
+
+    // 移除亡靈身分組（離開遊戲就不用再禁言）
+    const deadRoleId = process.env.DEAD_ROLE_ID;
+    if (deadRoleId && state.guild) {
+      try {
+        const member = await state.guild.members.fetch(player.id);
+        await member.roles.remove(deadRoleId);
+      } catch {}
+    }
 
     // 主持人離開 → 轉移給下一個活著的人
     if (wasHost) {

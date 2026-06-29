@@ -1,7 +1,10 @@
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 
 const GOLD = 0xFFD700;
 const e = (text) => new EmbedBuilder().setColor(GOLD).setDescription(text);
+
+// 記住用過的詞組索引（跨遊戲，重啟清空）
+const usedPairIndices = new Set();
 
 // ─── 內建詞組（平民詞, 臥底詞）───
 const WORD_PAIRS = [
@@ -43,7 +46,7 @@ function getRoleConfig(count) {
 const state = {
   phase: 'idle', hostId: null, channelId: null, guild: null,
   players: [], order: [], orderIndex: 0,
-  round: 1, maxRounds: 0,
+  round: 1, maxRounds: 0, customMode: false,
   wordPair: null,
   votes: new Map(), voteMsg: null,
   collectors: [], records: [], describeTimer: null,
@@ -55,7 +58,7 @@ function reset() {
   Object.assign(state, {
     phase: 'idle', hostId: null, channelId: null, guild: null,
     players: [], order: [], orderIndex: 0,
-    round: 1, maxRounds: 0,
+    round: 1, maxRounds: 0, customMode: false,
     wordPair: null,
     votes: new Map(), voteMsg: null,
     collectors: [], records: [], describeTimer: null,
@@ -82,6 +85,7 @@ function checkWin() {
 
   if (spies.length === 0) return 'civilian'; // 所有臥底被投出
   if (civilians.length === 0) return 'spy';   // 場上沒有平民
+  if (civilians.length === 1) return 'spy';   // 只剩一個平民，臥底勝利
   return null;
 }
 
@@ -184,20 +188,28 @@ async function startVoting(channel) {
   const ts = Date.now();
 
   function buildVoteEmbed() {
-    let text = '🗳️ **投票時間！**\n\n點按鈕投票，可以改票。開局人按「確認結算」結束投票。\n\n';
+    let text = '🗳️ **投票時間！**（⏱️ 限時 2 分鐘）\n\n點按鈕投票，可以改票。開局人按「確認結算」或時間到自動結算。\n\n';
     const tally = {};
+    const abstainers = [];
     for (const [voterId, targetId] of state.votes) {
-      if (!tally[targetId]) tally[targetId] = [];
-      tally[targetId].push(findPlayer(voterId)?.name);
+      if (targetId === 'abstain') {
+        abstainers.push(findPlayer(voterId)?.name);
+      } else {
+        if (!tally[targetId]) tally[targetId] = [];
+        tally[targetId].push(findPlayer(voterId)?.name);
+      }
     }
-    if (Object.keys(tally).length === 0) {
+    if (Object.keys(tally).length === 0 && abstainers.length === 0) {
       text += '目前還沒有人投票。';
     } else {
       for (const [tid, vnames] of Object.entries(tally)) {
         text += `**${findPlayer(tid)?.name}**（${vnames.length} 票）：${vnames.join('、')}\n`;
       }
+      if (abstainers.length > 0) {
+        text += `\n🚫 棄票：${abstainers.join('、')}`;
+      }
     }
-    text += `\n已投票：${state.votes.size} / ${alive.length}`;
+    text += `\n\n已決定：${state.votes.size} / ${alive.length}`;
     return e(text);
   }
 
@@ -218,6 +230,10 @@ async function startVoting(channel) {
     if (rows.length < 5) {
       rows.push(new ActionRowBuilder().addComponents(
         new ButtonBuilder()
+          .setCustomId(`uvote_${ts}_abstain`)
+          .setLabel('🚫 棄票')
+          .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
           .setCustomId(`uvoteconfirm_${ts}`)
           .setLabel('✅ 確認結算')
           .setStyle(ButtonStyle.Success)
@@ -231,7 +247,7 @@ async function startVoting(channel) {
   const aliveIds = new Set(alive.map(p => p.id));
   const collector = voteMsg.createMessageComponentCollector({
     filter: i => i.customId.startsWith(`uvote_${ts}_`) || i.customId === `uvoteconfirm_${ts}`,
-    time: 3600000,
+    time: 120000,
   });
 
   collector.on('collect', async (i) => {
@@ -239,7 +255,7 @@ async function startVoting(channel) {
       if (i.user.id !== state.hostId) {
         return i.reply({ embeds: [e('❌ 只有開局人才能確認結算！')], flags: MessageFlags.Ephemeral });
       }
-      collector.stop();
+      collector.stop('confirmed');
       await i.update({ components: [] });
       await resolveVote(channel);
       return;
@@ -250,12 +266,20 @@ async function startVoting(channel) {
     }
 
     const targetId = i.customId.replace(`uvote_${ts}_`, '');
-    if (targetId === i.user.id) {
+    if (targetId !== 'abstain' && targetId === i.user.id) {
       return i.reply({ embeds: [e('❌ 不能投自己！')], flags: MessageFlags.Ephemeral });
     }
 
     state.votes.set(i.user.id, targetId);
     await i.update({ embeds: [buildVoteEmbed()], components: buildComponents() });
+  });
+
+  collector.on('end', async (c, reason) => {
+    if (reason === 'time' && state.phase === 'voting') {
+      await voteMsg.edit({ components: [] }).catch(() => {});
+      await channel.send({ embeds: [e('⏰ 投票時間到，自動結算！')] });
+      await resolveVote(channel);
+    }
   });
   state.collectors.push(collector);
 }
@@ -264,6 +288,7 @@ async function startVoting(channel) {
 async function resolveVote(channel) {
   const tally = {};
   for (const [, targetId] of state.votes) {
+    if (targetId === 'abstain') continue;
     tally[targetId] = (tally[targetId] || 0) + 1;
   }
 
@@ -408,7 +433,89 @@ const commands = {
 
     if (state.phase === 'idle') return;
 
-    // 2. 分配角色
+    // 3. 選詞組（自訂或隨機）
+    const tsWord = Date.now();
+    const wordRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`uword_${tsWord}_custom`).setLabel('✏️ 自訂詞組').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`uword_${tsWord}_random`).setLabel('🎲 隨機詞組').setStyle(ButtonStyle.Secondary),
+    );
+    const wordMsg = await message.channel.send({
+      content: `<@${message.author.id}>`,
+      embeds: [e('📝 **開局人請選擇詞組來源：**')],
+      components: [wordRow],
+    });
+
+    const pair = await new Promise((resolve) => {
+      const collector = wordMsg.createMessageComponentCollector({
+        filter: i => i.customId.startsWith(`uword_${tsWord}_`) && i.user.id === state.hostId,
+        time: 120000,
+      });
+      collector.on('collect', async (i) => {
+        if (i.customId === `uword_${tsWord}_random`) {
+          collector.stop();
+          state.customMode = false;
+          let available = WORD_PAIRS.map((p, idx) => ({ pair: p, idx })).filter(x => !usedPairIndices.has(x.idx));
+          if (available.length === 0) { usedPairIndices.clear(); available = WORD_PAIRS.map((p, idx) => ({ pair: p, idx })); }
+          const pick = available[Math.floor(Math.random() * available.length)];
+          usedPairIndices.add(pick.idx);
+          await i.update({ embeds: [e('🎲 已隨機選擇詞組！')], components: [] });
+          resolve(pick.pair);
+        } else {
+          const modal = new ModalBuilder()
+            .setCustomId(`uwordmodal_${tsWord}`)
+            .setTitle('自訂詞組')
+            .addComponents(
+              new ActionRowBuilder().addComponents(
+                new TextInputBuilder().setCustomId('word_a').setLabel('平民詞').setStyle(TextInputStyle.Short).setPlaceholder('例如：蘋果').setRequired(true).setMaxLength(20)
+              ),
+              new ActionRowBuilder().addComponents(
+                new TextInputBuilder().setCustomId('word_b').setLabel('臥底詞').setStyle(TextInputStyle.Short).setPlaceholder('例如：芭樂').setRequired(true).setMaxLength(20)
+              )
+            );
+          await i.showModal(modal);
+          try {
+            const submitted = await i.awaitModalSubmit({ time: 120000 });
+            collector.stop();
+            const wordA = submitted.fields.getTextInputValue('word_a').trim();
+            const wordB = submitted.fields.getTextInputValue('word_b').trim();
+            await wordMsg.edit({ embeds: [e('✏️ 已設定自訂詞組！')], components: [] });
+            await submitted.reply({ embeds: [e(`✏️ 你設定的詞組：\n平民詞：**${wordA}**\n臥底詞：**${wordB}**\n（只有你看得到）`)], flags: MessageFlags.Ephemeral });
+            state.customMode = true;
+            resolve([wordA, wordB]);
+          } catch {
+            // Modal 取消，不做任何事
+          }
+        }
+      });
+      collector.on('end', (c, reason) => {
+        if (reason === 'time') {
+          let available = WORD_PAIRS.map((p, idx) => ({ pair: p, idx })).filter(x => !usedPairIndices.has(x.idx));
+          if (available.length === 0) { usedPairIndices.clear(); available = WORD_PAIRS.map((p, idx) => ({ pair: p, idx })); }
+          const pick = available[Math.floor(Math.random() * available.length)];
+          usedPairIndices.add(pick.idx);
+          wordMsg.edit({ embeds: [e('⏰ 超時，已隨機選擇詞組！')], components: [] }).catch(() => {});
+          resolve(pick.pair);
+        }
+      });
+      state.collectors.push(collector);
+    });
+
+    if (state.phase === 'idle') return;
+
+    // 自訂模式：開局人退出玩家列表，變成純主持
+    if (state.customMode) {
+      state.players = state.players.filter(p => p.id !== state.hostId);
+      if (state.players.length < 3) {
+        reset();
+        return message.channel.send({ embeds: [e('❌ 開局人選擇自訂後退出遊玩，剩餘玩家不足 3 人，遊戲取消！')] });
+      }
+      await message.channel.send({ embeds: [e(`📋 開局人選擇自訂詞組，不參與遊玩。\n開局人只負責投票時按「確認結算」。`)] });
+    }
+
+    // 隨機決定哪個是平民詞哪個是臥底詞
+    state.wordPair = Math.random() < 0.5 ? pair : [pair[1], pair[0]];
+
+    // 分配角色（在開局人退出後）
     const config = getRoleConfig(state.players.length);
     const roles = [];
     for (let i = 0; i < config.spy; i++) roles.push('spy');
@@ -417,12 +524,7 @@ const commands = {
     const shuffledRoles = shuffle(roles);
     state.players.forEach((p, i) => { p.role = shuffledRoles[i]; });
 
-    // 3. 選詞組
-    const pair = WORD_PAIRS[Math.floor(Math.random() * WORD_PAIRS.length)];
-    // 隨機決定哪個是平民詞哪個是臥底詞
-    state.wordPair = Math.random() < 0.5 ? pair : [pair[1], pair[0]];
-
-    // 4. 分配詞彙
+    // 分配詞彙
     state.players.forEach(p => {
       if (p.role === 'civilian') p.word = state.wordPair[0];
       else if (p.role === 'spy') p.word = state.wordPair[1];
