@@ -3,6 +3,7 @@ import bombCommands from './bomb.js';
 import werewolfCommands from './werewolf.js';
 import werewordsCommands from './werewords.js';
 import undercoverCommands from './undercover.js';
+import coupCommands from './coup.js';
 
 // 賓果指令對應
 const bingoMap = { bs: 'bs', bj: 'bj', bb: 'bb', bc: 'bc', bl: 'bl', bq: 'bq', br: 'br' };
@@ -14,6 +15,8 @@ const wolfMap = { ws: 'ws', wj: 'wj', wb: 'wb', wq: 'wq', wl: 'wl' };
 const wwMap = { wws: 'wws', wwj: 'wwj', wwb: 'wwb', wwg: 'wwg', wwp: 'wwp', wwq: 'wwq', wwl: 'wwl' };
 // 誰是臥底指令對應
 const ucMap = { us: 'us', uj: 'uj', ub: 'ub', ud: 'ud', uq: 'uq', ul: 'ul' };
+// 政變指令對應
+const coupMap = { cs: 'cs', cj: 'cj', cb: 'cb', cc: 'cc', cq: 'cq', cl: 'cl' };
 
 export function setupGameRouter(client) {
   client.on('messageCreate', async (message) => {
@@ -60,6 +63,14 @@ export function setupGameRouter(client) {
         const channelId = process.env.UNDERCOVER_CHANNEL_ID;
         if (channelId && message.channel.id !== channelId) return;
         await undercoverCommands[cmd](message, args);
+        return;
+      }
+
+      // 政變指令
+      if (coupMap[cmd]) {
+        const channelId = process.env.COUP_CHANNEL_ID;
+        if (channelId && message.channel.id !== channelId) return;
+        await coupCommands[cmd](message, args);
         return;
       }
     } catch (err) {
