@@ -829,6 +829,26 @@ const commands = {
     await message.reply({ embeds: [e(getHandText(player))], flags: MessageFlags.Ephemeral });
   },
 
+  async ch(message) {
+    message.channel.send({ embeds: [e(
+      '🃏 **政變快速參考卡**\n\n' +
+      '**角色能力**\n' +
+      '👑 公爵 — 收稅+3 ｜ 擋外援\n' +
+      '🗡️ 殺手 — 暗殺(-3💰)\n' +
+      '🏴‍☠️ 隊長 — 偷2💰 ｜ 擋偷竊\n' +
+      '🔄 大使 — 換牌 ｜ 擋偷竊\n' +
+      '🛡️ 貴婦 — 擋暗殺\n\n' +
+      '**行動**\n' +
+      '💰 收入+1 ｜ 💵 外援+2（公爵可擋）\n' +
+      '⚔️ 政變-7（不可擋）｜ 10💰強制政變\n' +
+      '👑 收稅+3 ｜ 🗡️ 暗殺-3 ｜ 🏴‍☠️ 偷2 ｜ 🔄 換牌\n\n' +
+      '**質疑規則**\n' +
+      '✅ 真的有 → 質疑者翻牌，被質疑者換新牌\n' +
+      '❌ 沒有 → 被質疑者翻牌，行動失敗\n\n' +
+      '`!cc` 查看手牌 ｜ `!cq` 取消 ｜ `!cl` 離開'
+    )] });
+  },
+
   async cq(message) {
     if (state.phase === 'idle') return message.reply({ embeds: [e('❌ 目前沒有進行中的政變局！')] });
     const isHost = message.author.id === state.hostId;

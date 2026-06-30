@@ -16,7 +16,7 @@ const wwMap = { wws: 'wws', wwj: 'wwj', wwb: 'wwb', wwg: 'wwg', wwp: 'wwp', wwq:
 // 誰是臥底指令對應
 const ucMap = { us: 'us', uj: 'uj', ub: 'ub', ud: 'ud', uq: 'uq', ul: 'ul' };
 // 政變指令對應
-const coupMap = { cs: 'cs', cj: 'cj', cb: 'cb', cc: 'cc', cq: 'cq', cl: 'cl' };
+const coupMap = { cs: 'cs', cj: 'cj', cb: 'cb', cc: 'cc', ch: 'ch', cq: 'cq', cl: 'cl' };
 
 export function setupGameRouter(client) {
   client.on('messageCreate', async (message) => {
