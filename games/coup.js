@@ -174,6 +174,12 @@ async function resolveChallenge(channel, challengerId, targetId, claimedRole) {
     const newCard = state.deck.pop();
     target.cards.push(newCard);
 
+    // DM 通知新牌
+    try {
+      const member = await state.guild.members.fetch(targetId);
+      await member.send({ embeds: [e(`🔄 你的 ${ROLES[claimedRole].name} 放回牌庫，抽到新牌：**${ROLES[newCard].name}**\n\n${getHandText(target)}`)] });
+    } catch {}
+
     // 質疑者失去影響力
     await loseInfluence(channel, challengerId, '質疑失敗，失去一點影響力');
     return true; // 行動繼續
@@ -267,83 +273,115 @@ async function showBlockChallengeWindow(channel, blockerId, blockerName, claimed
 // ─── 大使換牌 ───
 async function executeExchange(channel, playerId) {
   const player = findPlayer(playerId);
-  // 從牌庫抽 2 張
   const drawn = [state.deck.pop(), state.deck.pop()];
   const allCards = [...player.cards, ...drawn];
-
-  // 讓玩家選擇保留哪些牌（保留原本手牌數量）
   const keepCount = player.cards.length;
   const ts = Date.now();
-  const selected = [];
 
-  async function showSelection(interaction) {
-    const rows = [];
-    const row = new ActionRowBuilder();
-    allCards.forEach((card, idx) => {
-      const isSelected = selected.includes(idx);
-      row.addComponents(
-        new ButtonBuilder()
-          .setCustomId(`exchange_${ts}_${idx}`)
-          .setLabel(`${isSelected ? '✅ ' : ''}${ROLES[card].name}`)
-          .setStyle(isSelected ? ButtonStyle.Success : ButtonStyle.Secondary)
-      );
-    });
-    rows.push(row);
-
-    if (selected.length === keepCount) {
-      rows.push(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`exchange_${ts}_confirm`).setLabel('✅ 確認選擇').setStyle(ButtonStyle.Primary)
-      ));
-    }
-
-    const embed = e(`🔄 **換牌：選擇 ${keepCount} 張牌保留**\n\n已選：${selected.length} / ${keepCount}`);
-    if (interaction) {
-      await interaction.update({ embeds: [embed], components: rows });
-    }
-    return { embeds: [embed], components: rows };
-  }
-
-  const msgData = await showSelection(null);
-  const msg = await channel.send({ ...msgData, content: `<@${playerId}>` });
+  // 公開訊息 + 按鈕觸發 ephemeral 選牌
+  const triggerRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`extrigger_${ts}`).setLabel('🔄 選擇要保留的牌').setStyle(ButtonStyle.Primary)
+  );
+  const triggerMsg = await channel.send({
+    content: `<@${playerId}>`,
+    embeds: [e(`🔄 **${player.name}** 正在換牌，請按按鈕選擇保留的牌`)],
+    components: [triggerRow],
+  });
 
   return new Promise((resolve) => {
-    const collector = msg.createMessageComponentCollector({
-      filter: i => i.customId.startsWith(`exchange_${ts}_`) && i.user.id === playerId,
+    const selected = [];
+
+    const triggerCollector = triggerMsg.createMessageComponentCollector({
+      filter: i => i.customId === `extrigger_${ts}`,
       time: 60000,
     });
 
-    collector.on('collect', async (i) => {
-      if (i.customId === `exchange_${ts}_confirm`) {
-        collector.stop('done');
-        const kept = selected.map(idx => allCards[idx]);
-        const returned = allCards.filter((_, idx) => !selected.includes(idx));
-        player.cards = kept;
-        state.deck.push(...returned);
-        state.deck = shuffle(state.deck);
-        await i.update({ embeds: [e('🔄 換牌完成！')], components: [] });
-        resolve();
-        return;
+    triggerCollector.on('collect', async (i) => {
+      if (i.user.id !== playerId) {
+        return i.reply({ embeds: [e('❌ 不是你在換牌！')], flags: MessageFlags.Ephemeral });
+      }
+      triggerCollector.stop('picked');
+
+      // ephemeral 顯示所有牌讓玩家選
+      const pickTs = Date.now();
+      function buildPickComponents() {
+        const row = new ActionRowBuilder();
+        allCards.forEach((card, idx) => {
+          const isSel = selected.includes(idx);
+          row.addComponents(
+            new ButtonBuilder()
+              .setCustomId(`expick_${pickTs}_${idx}`)
+              .setLabel(`${isSel ? '✅ ' : ''}${ROLES[card].name}`)
+              .setStyle(isSel ? ButtonStyle.Success : ButtonStyle.Secondary)
+          );
+        });
+        const rows = [row];
+        if (selected.length === keepCount) {
+          rows.push(new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`expick_${pickTs}_confirm`).setLabel('✅ 確認選擇').setStyle(ButtonStyle.Primary)
+          ));
+        }
+        return rows;
       }
 
-      const idx = parseInt(i.customId.replace(`exchange_${ts}_`, ''));
-      if (selected.includes(idx)) {
-        selected.splice(selected.indexOf(idx), 1);
-      } else if (selected.length < keepCount) {
-        selected.push(idx);
-      }
-      await showSelection(i);
+      await i.reply({
+        embeds: [e(`🔄 **選擇 ${keepCount} 張牌保留：**\n已選：${selected.length} / ${keepCount}`)],
+        components: buildPickComponents(),
+        flags: MessageFlags.Ephemeral,
+      });
+
+      const reply = await i.fetchReply();
+      const pickCollector = reply.createMessageComponentCollector({
+        filter: pi => pi.customId.startsWith(`expick_${pickTs}_`) && pi.user.id === playerId,
+        time: 60000,
+      });
+
+      pickCollector.on('collect', async (pi) => {
+        if (pi.customId === `expick_${pickTs}_confirm`) {
+          pickCollector.stop('done');
+          const kept = selected.map(idx => allCards[idx]);
+          const returned = allCards.filter((_, idx) => !selected.includes(idx));
+          player.cards = kept;
+          state.deck.push(...returned);
+          state.deck = shuffle(state.deck);
+          await pi.update({ embeds: [e(`🔄 換牌完成！\n\n${getHandText(player)}`)], components: [] });
+          await triggerMsg.edit({ embeds: [e(`🔄 **${player.name}** 換牌完成！`)], components: [] });
+          resolve();
+          return;
+        }
+
+        const idx = parseInt(pi.customId.replace(`expick_${pickTs}_`, ''));
+        if (selected.includes(idx)) {
+          selected.splice(selected.indexOf(idx), 1);
+        } else if (selected.length < keepCount) {
+          selected.push(idx);
+        }
+        await pi.update({
+          embeds: [e(`🔄 **選擇 ${keepCount} 張牌保留：**\n已選：${selected.length} / ${keepCount}`)],
+          components: buildPickComponents(),
+        });
+      });
+
+      pickCollector.on('end', (c, reason) => {
+        if (reason !== 'done') {
+          state.deck.push(...drawn);
+          state.deck = shuffle(state.deck);
+          triggerMsg.edit({ embeds: [e(`🔄 **${player.name}** 超時，保留原本的牌`)], components: [] }).catch(() => {});
+          resolve();
+        }
+      });
+      state.collectors.push(pickCollector);
     });
 
-    collector.on('end', (c, reason) => {
-      if (reason !== 'done') {
-        // 超時，保留原本的牌
+    triggerCollector.on('end', (c, reason) => {
+      if (reason !== 'picked') {
         state.deck.push(...drawn);
         state.deck = shuffle(state.deck);
-        msg.edit({ embeds: [e('🔄 超時，保留原本的牌')], components: [] }).catch(() => {});
+        triggerMsg.edit({ embeds: [e(`🔄 **${player.name}** 超時，保留原本的牌`)], components: [] }).catch(() => {});
         resolve();
       }
     });
-    state.collectors.push(collector);
+    state.collectors.push(triggerCollector);
   });
 }
 
@@ -658,11 +696,11 @@ async function processAction(channel, player, action) {
 
       if (reaction.type === 'challenge') {
         const success = await resolveChallenge(channel, reaction.playerId, player.id, 'ambassador');
-        if (success && player.alive) {
+        if (success && player.alive && !checkWin()) {
           await executeExchange(channel, player.id);
         }
       } else {
-        await executeExchange(channel, player.id);
+        if (!checkWin()) await executeExchange(channel, player.id);
       }
       state.orderIndex = (state.orderIndex + 1) % state.order.length;
       await startTurn(channel);
@@ -826,7 +864,19 @@ const commands = {
     if (state.phase !== 'playing') return message.reply({ embeds: [e('❌ 目前沒有進行中的政變局！')] });
     const player = findPlayer(message.author.id);
     if (!player) return message.reply({ embeds: [e('❌ 你沒有加入這局政變！')] });
-    await message.reply({ embeds: [e(getHandText(player))], flags: MessageFlags.Ephemeral });
+    const ts = Date.now();
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`viewhand_${ts}`).setLabel('🃏 查看手牌').setStyle(ButtonStyle.Secondary)
+    );
+    const msg = await message.channel.send({ embeds: [e('🃏 點擊按鈕查看自己的手牌：')], components: [row] });
+    const collector = msg.createMessageComponentCollector({ filter: i => i.customId === `viewhand_${ts}`, time: 60000 });
+    collector.on('collect', async (i) => {
+      const p = findPlayer(i.user.id);
+      if (!p) return i.reply({ embeds: [e('❌ 你沒有加入這局！')], flags: MessageFlags.Ephemeral });
+      await i.reply({ embeds: [e(`🃏 **你的手牌：**\n${getHandText(p)}`)], flags: MessageFlags.Ephemeral });
+    });
+    collector.on('end', () => { msg.edit({ components: [] }).catch(() => {}); });
+    state.collectors.push(collector);
   },
 
   async ch(message) {
