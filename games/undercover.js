@@ -5,6 +5,8 @@ const e = (text) => new EmbedBuilder().setColor(GOLD).setDescription(text);
 
 // 記住用過的詞組索引（跨遊戲，重啟清空）
 const usedPairIndices = new Set();
+// 遊戲計數器（每 10 局觸發特殊模式）
+let gameCount = 0;
 
 // ─── 內建詞組（平民詞, 臥底詞）───
 const WORD_PAIRS = [
@@ -512,17 +514,34 @@ const commands = {
       await message.channel.send({ embeds: [e(`📋 開局人選擇自訂詞組，不參與遊玩。\n開局人只負責投票時按「確認結算」。`)] });
     }
 
-    // 隨機決定哪個是平民詞哪個是臥底詞
-    state.wordPair = Math.random() < 0.5 ? pair : [pair[1], pair[0]];
+    // 隨機模式才交換平民/臥底詞，自訂模式保持開局人設定
+    if (state.customMode) {
+      state.wordPair = pair;
+    } else {
+      state.wordPair = Math.random() < 0.5 ? pair : [pair[1], pair[0]];
+    }
+
+    // 遊戲計數 +1
+    gameCount++;
+    const isSpecialRound = gameCount % 10 === 0 && state.players.length >= 3;
 
     // 分配角色（在開局人退出後）
-    const config = getRoleConfig(state.players.length);
-    const roles = [];
-    for (let i = 0; i < config.spy; i++) roles.push('spy');
-    for (let i = 0; i < config.blank; i++) roles.push('blank');
-    while (roles.length < state.players.length) roles.push('civilian');
-    const shuffledRoles = shuffle(roles);
-    state.players.forEach((p, i) => { p.role = shuffledRoles[i]; });
+    if (isSpecialRound) {
+      // 特殊模式：1 平民 + 1 臥底 + 其餘白板
+      const roles = ['civilian', 'spy'];
+      while (roles.length < state.players.length) roles.push('blank');
+      // 隨機決定平民和臥底是誰
+      const shuffledRoles = shuffle(roles);
+      state.players.forEach((p, i) => { p.role = shuffledRoles[i]; });
+    } else {
+      const config = getRoleConfig(state.players.length);
+      const roles = [];
+      for (let i = 0; i < config.spy; i++) roles.push('spy');
+      for (let i = 0; i < config.blank; i++) roles.push('blank');
+      while (roles.length < state.players.length) roles.push('civilian');
+      const shuffledRoles = shuffle(roles);
+      state.players.forEach((p, i) => { p.role = shuffledRoles[i]; });
+    }
 
     // 分配詞彙
     state.players.forEach(p => {
@@ -545,8 +564,15 @@ const commands = {
       }
     }
 
-    // 6. 隨機排序
-    state.order = shuffle(state.players.map(p => p.id));
+    // 6. 排序
+    if (isSpecialRound) {
+      // 特殊模式：平民和臥底隨機占第 1、2 位，其餘白板隨機排後面
+      const civSpy = shuffle(state.players.filter(p => p.role === 'civilian' || p.role === 'spy').map(p => p.id));
+      const blanks = shuffle(state.players.filter(p => p.role === 'blank').map(p => p.id));
+      state.order = [...civSpy, ...blanks];
+    } else {
+      state.order = shuffle(state.players.map(p => p.id));
+    }
     state.round = 1;
 
     const orderNames = state.order.map((id, i) => `${i + 1}. ${findPlayer(id).name}`).join('\n');

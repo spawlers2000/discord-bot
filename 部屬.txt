@@ -1,5 +1,5 @@
 git add .
-git commit -m "0701"  
+git commit -m "0701.02"  
 git push
 
 git add .
