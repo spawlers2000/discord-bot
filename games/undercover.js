@@ -1,12 +1,36 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
 const GOLD = 0xFFD700;
 const e = (text) => new EmbedBuilder().setColor(GOLD).setDescription(text);
 
-// 記住用過的詞組索引（跨遊戲，重啟清空）
-const usedPairIndices = new Set();
-// 遊戲計數器（每 10 局觸發特殊模式）
-let gameCount = 0;
+// ─── 持久化存儲 ───
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DATA_PATH = join(__dirname, '..', 'data', 'undercover-data.json');
+
+function loadData() {
+  try {
+    if (existsSync(DATA_PATH)) {
+      const raw = JSON.parse(readFileSync(DATA_PATH, 'utf-8'));
+      return { usedPairs: new Set(raw.usedPairs || []), gameCount: raw.gameCount || 0 };
+    }
+  } catch {}
+  return { usedPairs: new Set(), gameCount: 0 };
+}
+
+function saveData() {
+  try {
+    const dir = dirname(DATA_PATH);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(DATA_PATH, JSON.stringify({ usedPairs: [...usedPairIndices], gameCount }));
+  } catch (err) { console.error('[誰是臥底] 儲存資料失敗:', err.message); }
+}
+
+const savedData = loadData();
+const usedPairIndices = savedData.usedPairs;
+let gameCount = savedData.gameCount;
 
 // ─── 內建詞組（平民詞, 臥底詞）───
 const WORD_PAIRS = [
@@ -83,7 +107,7 @@ function shuffle(arr) {
 function checkWin() {
   const alive = getAlivePlayers();
   const spies = alive.filter(p => p.role === 'spy');
-  const civilians = alive.filter(p => p.role === 'civilian');
+  const civilians = alive.filter(p => p.role === 'civilian' || p.role === 'blank'); // 白板算平民
 
   if (spies.length === 0) return 'civilian'; // 所有臥底被投出
   if (civilians.length === 0) return 'spy';   // 場上沒有平民
@@ -314,9 +338,9 @@ async function resolveVote(channel) {
   const eliminated = findPlayer(eliminatedId);
   eliminated.alive = false;
 
-  // 白板出局 → 白板自己輸，遊戲繼續
+  // 白板出局 → 遊戲繼續，不公布身份
   if (eliminated.role === 'blank') {
-    await channel.send({ embeds: [e(`⚖️ **${eliminated.name}** 被投出了！（${maxVotes} 票）\n\n🤷 他是**白板**，沒有拿到任何詞彙。遊戲繼續！`)] });
+    await channel.send({ embeds: [e(`⚖️ **${eliminated.name}** 被投出了！（${maxVotes} 票）\n\n遊戲繼續...`)] });
     await nextRoundOrEnd(channel);
     return;
   }
@@ -460,6 +484,7 @@ const commands = {
           if (available.length === 0) { usedPairIndices.clear(); available = WORD_PAIRS.map((p, idx) => ({ pair: p, idx })); }
           const pick = available[Math.floor(Math.random() * available.length)];
           usedPairIndices.add(pick.idx);
+          saveData();
           await i.update({ embeds: [e('🎲 已隨機選擇詞組！')], components: [] });
           resolve(pick.pair);
         } else {
@@ -495,6 +520,7 @@ const commands = {
           if (available.length === 0) { usedPairIndices.clear(); available = WORD_PAIRS.map((p, idx) => ({ pair: p, idx })); }
           const pick = available[Math.floor(Math.random() * available.length)];
           usedPairIndices.add(pick.idx);
+          saveData();
           wordMsg.edit({ embeds: [e('⏰ 超時，已隨機選擇詞組！')], components: [] }).catch(() => {});
           resolve(pick.pair);
         }
@@ -523,6 +549,7 @@ const commands = {
 
     // 遊戲計數 +1
     gameCount++;
+    saveData();
     const isSpecialRound = gameCount % 10 === 0 && state.players.length >= 3;
 
     // 分配角色（在開局人退出後）

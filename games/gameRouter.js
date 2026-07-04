@@ -4,6 +4,7 @@ import werewolfCommands from './werewolf.js';
 import werewordsCommands from './werewords.js';
 import undercoverCommands from './undercover.js';
 import coupCommands from './coup.js';
+import cardBattleCommands from './cardBattle.js';
 
 // 賓果指令對應
 const bingoMap = { bs: 'bs', bj: 'bj', bb: 'bb', bc: 'bc', bl: 'bl', bq: 'bq', br: 'br' };
@@ -17,6 +18,8 @@ const wwMap = { wws: 'wws', wwj: 'wwj', wwb: 'wwb', wwg: 'wwg', wwp: 'wwp', wwq:
 const ucMap = { us: 'us', uj: 'uj', ub: 'ub', ud: 'ud', uq: 'uq', ul: 'ul' };
 // 政變指令對應
 const coupMap = { cs: 'cs', cj: 'cj', cb: 'cb', cc: 'cc', ch: 'ch', cq: 'cq', cl: 'cl' };
+// 卡牌對戰指令對應
+const cardMap = { reg: 'reg', ri: 'ri', rd: 'rd', rr: 'rr', rq: 'rq', rc: 'rc' };
 
 export function setupGameRouter(client) {
   client.on('messageCreate', async (message) => {
@@ -71,6 +74,14 @@ export function setupGameRouter(client) {
         const channelId = process.env.COUP_CHANNEL_ID;
         if (channelId && message.channel.id !== channelId) return;
         await coupCommands[cmd](message, args);
+        return;
+      }
+
+      // 卡牌對戰指令
+      if (cardMap[cmd]) {
+        const channelIds = (process.env.CARD_CHANNEL_IDS || '').split(',').filter(Boolean);
+        if (channelIds.length > 0 && !channelIds.includes(message.channel.id)) return;
+        await cardBattleCommands[cmd](message, args);
         return;
       }
     } catch (err) {

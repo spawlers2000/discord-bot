@@ -1,7 +1,43 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, MessageFlags } from 'discord.js';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
 const GOLD = 0xFFD700;
 const e = (text) => new EmbedBuilder().setColor(GOLD).setDescription(text);
+
+// ─── 持久化存儲 ───
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DATA_PATH = join(__dirname, '..', 'data', 'werewords-data.json');
+
+function loadData() {
+  try {
+    if (existsSync(DATA_PATH)) {
+      const raw = JSON.parse(readFileSync(DATA_PATH, 'utf-8'));
+      return new Set(raw.usedWords || []);
+    }
+  } catch {}
+  return new Set();
+}
+
+function saveData() {
+  try {
+    const dir = dirname(DATA_PATH);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(DATA_PATH, JSON.stringify({ usedWords: [...usedWordIndices] }));
+  } catch (err) { console.error('[狼人真言] 儲存資料失敗:', err.message); }
+}
+
+const usedWordIndices = loadData();
+
+function pickRandomWord() {
+  let available = DEFAULT_WORDS.map((w, idx) => ({ word: w, idx })).filter(x => !usedWordIndices.has(x.idx));
+  if (available.length === 0) { usedWordIndices.clear(); available = DEFAULT_WORDS.map((w, idx) => ({ word: w, idx })); }
+  const pick = available[Math.floor(Math.random() * available.length)];
+  usedWordIndices.add(pick.idx);
+  saveData();
+  return pick.word;
+}
 
 // ─── 內建詞庫（300+）───
 const DEFAULT_WORDS = [
@@ -568,7 +604,7 @@ const commands = {
       collector.on('collect', async (i) => {
         if (i.customId === `wordsetup_${ts}_random`) {
           collector.stop();
-          const w = DEFAULT_WORDS[Math.floor(Math.random() * DEFAULT_WORDS.length)];
+          const w = pickRandomWord();
           await i.update({ embeds: [e(`👑 村長已設定詞彙！\n\n🎲 來源：**隨機選詞**\n📝 字數：**${w.length} 個字**`)], components: [] });
           await i.followUp({ embeds: [e(`👑 你設定的詞彙是：**${w}**\n（只有你看得到）`)], flags: MessageFlags.Ephemeral });
           resolve(w);
@@ -602,7 +638,7 @@ const commands = {
       });
       collector.on('end', (c, reason) => {
         if (reason === 'time') {
-          const w = DEFAULT_WORDS[Math.floor(Math.random() * DEFAULT_WORDS.length)];
+          const w = pickRandomWord();
           setupMsg.edit({ embeds: [e(`👑 村長超時，已隨機選詞！\n\n🎲 來源：**隨機選詞**\n📝 字數：**${w.length} 個字**`)], components: [] }).catch(() => {});
           resolve(w);
         }
