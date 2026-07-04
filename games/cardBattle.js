@@ -103,6 +103,17 @@ function typeIcon(type) {
 
 // ─── 回合開始 ───
 async function startRound(channel, battle) {
+  if (battle.phase !== 'playing') return;
+  
+  // 最多 30 回合
+  if (battle.round > 30) {
+    const [p1, p2] = battle.players;
+    const winnerIdx = p1.hp >= p2.hp ? 0 : 1;
+    await channel.send({ embeds: [e('⏰ 達到 30 回合上限！HP 較高者獲勝！')] });
+    await endBattle(channel, battle, winnerIdx);
+    return;
+  }
+
   const [p1, p2] = battle.players;
 
   // 回合開始：清護盾、處理中毒
@@ -142,6 +153,7 @@ async function startRound(channel, battle) {
 
 // ─── 玩家回合 ───
 async function startTurn(channel, battle) {
+  if (battle.phase !== 'playing') return;
   const current = battle.players[battle.turnIndex];
 
   // 麻痺跳過
@@ -169,46 +181,53 @@ async function startTurn(channel, battle) {
 
 // ─── 出牌選單 ───
 async function showPlayMenu(channel, battle) {
+  if (battle.phase !== 'playing') return;
   const current = battle.players[battle.turnIndex];
   const ts = Date.now();
 
-  // 建立手牌下拉選單
+  // 建立手牌按鈕（每行最多 5 個）
   const playable = [];
-  const seen = new Set();
   for (let i = 0; i < current.hand.length; i++) {
     const cardId = current.hand[i];
     const card = getCard(cardId);
     if (!card) continue;
-    const key = `${cardId}_${i}`;
     if (card.cost > current.ap) continue;
     if (card.oncePerBattle && current.usedOnce.has(cardId)) continue;
-    playable.push({ label: `${typeIcon(card.type)} ${card.name}（⚡${card.cost}）`, value: `${i}`, description: card.effect?.substring(0, 50) });
+    playable.push({ idx: i, card, cardId });
   }
 
   const rows = [];
-  if (playable.length > 0) {
-    const menu = new StringSelectMenuBuilder()
-      .setCustomId(`cardplay_${ts}`)
-      .setPlaceholder('選擇要出的牌...')
-      .addOptions(playable.slice(0, 25));
-    rows.push(new ActionRowBuilder().addComponents(menu));
+  for (let i = 0; i < playable.length; i += 5) {
+    if (rows.length >= 4) break; // 最多 4 行牌 + 1 行控制
+    const row = new ActionRowBuilder();
+    for (const p of playable.slice(i, i + 5)) {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`cp_${ts}_${p.idx}`)
+          .setLabel(`${typeIcon(p.card.type)}${p.card.name}(⚡${p.card.cost})`)
+          .setStyle(p.card.type === 'attack' ? ButtonStyle.Danger : p.card.type === 'defense' ? ButtonStyle.Primary : p.card.type === 'heal' ? ButtonStyle.Success : ButtonStyle.Secondary)
+      );
+    }
+    rows.push(row);
   }
 
+  // 控制按鈕
   rows.push(new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`cardview_${ts}`).setLabel('🃏 查看手牌').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`cardend_${ts}`).setLabel('⏭️ 結束回合').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`cv_${ts}`).setLabel('🃏 查看手牌').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`ce_${ts}`).setLabel('⏭️ 結束回合').setStyle(ButtonStyle.Danger),
   ));
 
   const msg = await channel.send({
-    embeds: [e(`⚡ **${current.name}** 的行動點：${current.ap} / ${ACTION_POINTS}\n\n${playable.length > 0 ? '選擇要出的牌，或結束回合' : '沒有可出的牌，請結束回合'}`)],
+    content: `<@${current.id}>`,
+    embeds: [e(`⚡ **${current.name}** 的行動點：${current.ap} / ${ACTION_POINTS}\n手牌：${current.hand.length} 張\n\n${playable.length > 0 ? '選擇要出的牌，或結束回合' : '沒有可出的牌，請結束回合'}`)],
     components: rows,
   });
 
   const collector = msg.createMessageComponentCollector({ time: 120000 });
 
   collector.on('collect', async (i) => {
-    // 查看手牌（任何玩家都能按看自己的）
-    if (i.customId === `cardview_${ts}`) {
+    // 查看手牌
+    if (i.customId === `cv_${ts}`) {
       const p = battle.players.find(p => p.id === i.user.id);
       if (!p) return i.reply({ embeds: [e('❌ 你不在這場對戰中！')], flags: MessageFlags.Ephemeral });
       return i.reply({ embeds: [e(`🃏 **你的手牌：**\n${handText(p)}`)], flags: MessageFlags.Ephemeral });
@@ -220,7 +239,7 @@ async function showPlayMenu(channel, battle) {
     }
 
     // 結束回合
-    if (i.customId === `cardend_${ts}`) {
+    if (i.customId === `ce_${ts}`) {
       collector.stop('ended');
       await i.update({ components: [] });
       await endTurn(channel, battle);
@@ -228,8 +247,8 @@ async function showPlayMenu(channel, battle) {
     }
 
     // 出牌
-    if (i.customId === `cardplay_${ts}`) {
-      const idx = parseInt(i.values[0]);
+    if (i.customId.startsWith(`cp_${ts}_`)) {
+      const idx = parseInt(i.customId.replace(`cp_${ts}_`, ''));
       const cardId = current.hand[idx];
       const card = getCard(cardId);
 
@@ -247,6 +266,7 @@ async function showPlayMenu(channel, battle) {
       if (card.oncePerBattle) current.usedOnce.add(cardId);
 
       // 執行卡牌效果
+      collector.stop('played');
       const result = await executeCard(battle, battle.turnIndex, card);
       await i.update({ components: [] });
       await channel.send({ embeds: [e(`${typeIcon(card.type)} **${current.name}** 使用了 **${card.name}**！\n\n${result}\n\n${statusText(battle)}`)] });
@@ -254,21 +274,23 @@ async function showPlayMenu(channel, battle) {
       // 檢查勝負
       const opponent = battle.players[1 - battle.turnIndex];
       if (opponent.hp <= 0) {
-        collector.stop('ko');
         await endBattle(channel, battle, battle.turnIndex);
         return;
       }
       if (current.hp <= 0) {
-        collector.stop('ko');
         await endBattle(channel, battle, 1 - battle.turnIndex);
         return;
       }
+      if (battle.escaped) {
+        await channel.send({ embeds: [e('🏃 戰鬥以平局結束！')] });
+        battles.delete(battle.channelId);
+        return;
+      }
 
-      // 繼續出牌
+      // 繼續出牌或結束
       if (current.ap > 0 && current.hand.length > 0) {
         await showPlayMenu(channel, battle);
       } else {
-        collector.stop('ended');
         await endTurn(channel, battle);
       }
     }
@@ -277,8 +299,9 @@ async function showPlayMenu(channel, battle) {
   collector.on('end', (c, reason) => {
     if (reason === 'time' && battle.phase === 'playing') {
       msg.edit({ components: [] }).catch(() => {});
-      channel.send({ embeds: [e(`⏰ **${current.name}** 超時，自動結束回合`)] });
-      endTurn(channel, battle);
+      channel.send({ embeds: [e(`⏰ **${current.name}** 超時，自動結束回合`)] }).then(() => {
+        if (battle.phase === 'playing') endTurn(channel, battle);
+      });
     }
   });
   battle.collectors.push(collector);
@@ -414,8 +437,6 @@ async function executeCard(battle, playerIdx, card) {
         log = `🔄 本回合被攻擊時反彈 ${card.counterDmg} 傷害`;
         break;
       case 'dodge':
-        opponent.buffs.dodge = {}; // 設在對手身上是錯的，應該設在自己
-        // 修正：設在自己身上
         self.buffs.dodge = {};
         log = '✨ 準備閃避下一次攻擊！';
         break;
@@ -639,8 +660,8 @@ async function executeCard(battle, playerIdx, card) {
 async function endTurn(channel, battle) {
   if (battle.phase !== 'playing') return;
   if (battle.escaped) {
-    // 平局結束
     await channel.send({ embeds: [e('🏃 戰鬥以平局結束！雙方不計勝敗。')] });
+    battle.phase = 'ended';
     battles.delete(battle.channelId);
     return;
   }
@@ -649,7 +670,6 @@ async function endTurn(channel, battle) {
     battle.turnIndex = 1;
     await startTurn(channel, battle);
   } else {
-    // 雙方都出完 → 下一回合
     battle.round++;
     await startRound(channel, battle);
   }
@@ -657,6 +677,13 @@ async function endTurn(channel, battle) {
 
 // ─── 戰鬥結束 ───
 async function endBattle(channel, battle, winnerIdx) {
+  if (battle.phase === 'ended') return; // 防止重複觸發
+  battle.phase = 'ended';
+  
+  // 立即停止所有 collector
+  battle.collectors.forEach(c => { try { c.stop('battleEnd'); } catch {} });
+  battle.collectors = [];
+
   const winner = battle.players[winnerIdx];
   const loser = battle.players[1 - winnerIdx];
 
@@ -668,20 +695,22 @@ async function endBattle(channel, battle, winnerIdx) {
   if (winnerDoc) { winnerDoc.wins++; winnerDoc.loseStreak = 0; await winnerDoc.save(); }
   if (loserDoc) { loserDoc.losses++; loserDoc.loseStreak++; await loserDoc.save(); }
 
+  const playerId_winner = winner.id;
+  const playerId_loser = loser.id;
+
   // 勝者三選一獎勵
-  battle.phase = 'reward';
-  await showReward(channel, battle, winner.id, '🏆 勝利獎勵！選擇一張卡牌加入牌組：');
+  await showReward(channel, playerId_winner, '🏆 勝利獎勵！選擇一張卡牌加入牌組：');
 
   // 檢查敗者連敗獎勵
   if (loserDoc && loserDoc.loseStreak >= 5 && loserDoc.loseStreak % 5 === 0) {
-    await showReward(channel, battle, loser.id, `😢 連敗 ${loserDoc.loseStreak} 場安慰獎！選擇一張卡牌：`);
+    await showReward(channel, playerId_loser, `😢 連敗 ${loserDoc.loseStreak} 場安慰獎！選擇一張卡牌：`);
   }
 
   battles.delete(battle.channelId);
 }
 
 // ─── 三選一獎勵 ───
-async function showReward(channel, battle, playerId, title) {
+async function showReward(channel, playerId, title) {
   const rewards = getRewardCards(3);
   const ts = Date.now();
   const player = await CardPlayer.findOne({ discordId: playerId });
@@ -847,10 +876,13 @@ const commands = {
     if (!target) return message.reply({ embeds: [e('❌ 請 @一個對手！例如 `!rd @對手`')] });
     if (target.id === message.author.id) return message.reply({ embeds: [e('❌ 不能挑戰自己！')] });
 
+    const targetMember = await message.guild.members.fetch(target.id);
+    const targetName = targetMember.displayName;
+
     const p1 = await CardPlayer.findOne({ discordId: message.author.id });
     const p2 = await CardPlayer.findOne({ discordId: target.id });
     if (!p1) return message.reply({ embeds: [e('❌ 你還沒有註冊！輸入 `!reg`')] });
-    if (!p2) return message.reply({ embeds: [e(`❌ ${target.username} 還沒有註冊！`)] });
+    if (!p2) return message.reply({ embeds: [e(`❌ ${targetName} 還沒有註冊！`)] });
 
     const ts = Date.now();
     const row = new ActionRowBuilder().addComponents(
@@ -861,7 +893,7 @@ const commands = {
 
     const msg = await message.channel.send({
       content: `<@${target.id}>`,
-      embeds: [e(`⚔️ **${message.member.displayName}** 向 **${target.username}** 發起卡牌對戰！\n\n是否接受挑戰？（⏱️ 5 分鐘）`)],
+      embeds: [e(`⚔️ **${message.member.displayName}** 向 **${targetName}** 發起卡牌對戰！\n\n是否接受挑戰？（⏱️ 5 分鐘）`)],
       components: [row],
     });
 
@@ -877,16 +909,16 @@ const commands = {
         return;
       }
       if (i.customId === `reject_${ts}`) {
-        await i.update({ embeds: [e(`❌ **${target.username}** 拒絕了挑戰`)], components: [] });
+        await i.update({ embeds: [e(`❌ **${targetName}** 拒絕了挑戰`)], components: [] });
         return;
       }
       if (i.customId === `accept_${ts}`) {
-        await i.update({ embeds: [e(`✅ **${target.username}** 接受了挑戰！對戰開始！`)], components: [] });
+        await i.update({ embeds: [e(`✅ **${targetName}** 接受了挑戰！對戰開始！`)], components: [] });
 
         // 建立戰鬥
         const battleState = createBattleState(message.channel.id,
           { id: message.author.id, name: message.member.displayName, deck: p1.deck },
-          { id: target.id, name: target.username, deck: p2.deck }
+          { id: target.id, name: targetName, deck: p2.deck }
         );
         battles.set(message.channel.id, battleState);
 
