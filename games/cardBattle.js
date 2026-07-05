@@ -116,9 +116,8 @@ async function startRound(channel, battle) {
 
   const [p1, p2] = battle.players;
 
-  // 回合開始：清護盾、處理中毒
+  // 回合開始：處理中毒（護盾改在各自回合開始時清）
   for (const p of battle.players) {
-    p.shield = 0;
     p.ap = ACTION_POINTS;
     // 中毒傷害
     if (p.debuffs.poison) {
@@ -170,6 +169,7 @@ async function startTurn(channel, battle) {
   current.firstTurn = false;
   const drawn = drawCards(current, drawCount);
   current.ap = ACTION_POINTS;
+  current.shield = 0; // 自己的護盾在自己回合開始時清空
 
   await channel.send({
     content: `<@${current.id}>`,
@@ -193,7 +193,18 @@ async function showPlayMenu(channel, battle) {
     if (!card) continue;
     if (card.cost > current.ap) continue;
     if (card.oncePerBattle && current.usedOnce.has(cardId)) continue;
-    playable.push({ idx: i, card, cardId });
+    // 按鈕標籤加上數值
+    let label = `${card.name}(⚡${card.cost})`;
+    if (card.dmg && (card.dmg[0] > 0 || card.dmg[1] > 0)) {
+      const bonus = card.bonus ? `+${card.bonus}` : '';
+      label += ` ${card.dmg[0]}~${card.dmg[1]}${bonus}傷`;
+    } else if (card.bonus && card.type === 'attack') {
+      label += ` +${card.bonus}傷`;
+    }
+    if (card.shield && card.type === 'defense') label += ` +${card.shield}盾`;
+    if (card.heal) label += ` +${card.heal}血`;
+    if (card.draw) label += ` 抽${card.draw}`;
+    playable.push({ idx: i, card, cardId, label: label.substring(0, 80) });
   }
 
   const rows = [];
@@ -204,7 +215,7 @@ async function showPlayMenu(channel, battle) {
       row.addComponents(
         new ButtonBuilder()
           .setCustomId(`cp_${ts}_${p.idx}`)
-          .setLabel(`${typeIcon(p.card.type)}${p.card.name}(⚡${p.card.cost})`)
+          .setLabel(p.label)
           .setStyle(p.card.type === 'attack' ? ButtonStyle.Danger : p.card.type === 'defense' ? ButtonStyle.Primary : p.card.type === 'heal' ? ButtonStyle.Success : ButtonStyle.Secondary)
       );
     }
