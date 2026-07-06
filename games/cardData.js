@@ -125,16 +125,16 @@ const CARDS = {
   heal_divine:     { name: '神之庇佑',        type: 'heal', cost: 0, fn: 'cleanse', healPerDiscard: 1, effect: '移除所有負面，每棄1張手牌回復1HP' },
   heal_divine_1:   { name: '神之庇佑+1',      type: 'heal', cost: 0, fn: 'cleanse', healPerDiscard: 2, effect: '移除所有負面，每棄1張手牌回復2HP' },
 
-  heal_antidote:   { name: '解毒藥',          type: 'heal', cost: 0, fn: 'curePoison', draw: 1, effect: '移除中毒 + 抽1牌' },
-  heal_antidote_1: { name: '解毒藥+1',        type: 'heal', cost: 0, fn: 'curePoison', draw: 2, effect: '移除中毒 + 抽2牌' },
+  heal_antidote:   { name: '解毒藥',          type: 'heal', cost: 0, fn: 'curePoison', effect: '移除中毒' },
+  heal_antidote_1: { name: '解毒藥+1',        type: 'heal', cost: 0, fn: 'curePoison', effect: '移除中毒' },
 
-  heal_antistun:   { name: '解麻藥',          type: 'heal', cost: 0, fn: 'cureParalyze', draw: 1, effect: '移除麻痺 + 抽1牌' },
-  heal_antistun_1: { name: '解麻藥+1',        type: 'heal', cost: 0, fn: 'cureParalyze', draw: 2, effect: '移除麻痺 + 抽2牌' },
+  heal_antistun:   { name: '解麻藥',          type: 'heal', cost: 0, fn: 'cureParalyze', effect: '移除麻痺' },
+  heal_antistun_1: { name: '解麻藥+1',        type: 'heal', cost: 0, fn: 'cureParalyze', effect: '移除麻痺' },
 
   heal_spring:     { name: '泉源之力',        type: 'heal', cost: 1, fn: 'atkBoostBuff', boostPct: 30, buffTurns: 1, oncePerBattle: true, effect: '攻擊力 +30%（1回合，每場限1次）' },
 
   // ===== 💜 特殊牌 =====
-  spc_supply:      { name: '補給',            type: 'special', cost: 0, fn: 'draw', draw: 2, effect: '抽 2 張牌' },
+  spc_supply:      { name: '補給',            type: 'special', cost: 0, fn: 'draw', draw: 1, effect: '抽 1 張牌' },
   spc_supply2:     { name: '補給（強化力量泉源）', type: 'special', cost: 0, fn: 'supplyBoost', effect: '強化力量泉源（成本+2），每場限1次', oncePerBattle: true },
 
   spc_clone:       { name: '幻影複製',        type: 'special', cost: 0, fn: 'clone', oncePerBattle: true, effect: '複製手中一張牌使用（每場限1次）' },

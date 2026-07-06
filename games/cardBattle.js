@@ -7,7 +7,7 @@ const e = (text) => new EmbedBuilder().setColor(GOLD).setDescription(text);
 const MAX_DECK = 50;
 const MAX_HAND = 10;
 const ACTION_POINTS = 4;
-const START_HP = 100;
+const START_HP = 50;
 
 // ─── 每個頻道獨立的戰鬥狀態 ───
 const battles = new Map(); // channelId → battleState
@@ -106,10 +106,10 @@ async function startRound(channel, battle) {
   if (battle.phase !== 'playing') return;
   
   // 最多 30 回合
-  if (battle.round > 30) {
+  if (battle.round > 15) {
     const [p1, p2] = battle.players;
     const winnerIdx = p1.hp >= p2.hp ? 0 : 1;
-    await channel.send({ embeds: [e('⏰ 達到 30 回合上限！HP 較高者獲勝！')] });
+    await channel.send({ embeds: [e('⏰ 達到 15 回合上限！HP 較高者獲勝！')] });
     await endBattle(channel, battle, winnerIdx);
     return;
   }
@@ -185,124 +185,134 @@ async function showPlayMenu(channel, battle) {
   const current = battle.players[battle.turnIndex];
   const ts = Date.now();
 
-  // 建立手牌按鈕（每行最多 5 個）
-  const playable = [];
-  for (let i = 0; i < current.hand.length; i++) {
-    const cardId = current.hand[i];
+  // 公開訊息：只有「出牌」和「結束回合」
+  const ctrlRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`cp_open_${ts}`).setLabel('🃏 出牌').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`cp_end_${ts}`).setLabel('⏭️ 結束回合').setStyle(ButtonStyle.Danger),
+  );
+
+  const hasPlayable = current.hand.some((cardId) => {
     const card = getCard(cardId);
-    if (!card) continue;
-    if (card.cost > current.ap) continue;
-    if (card.oncePerBattle && current.usedOnce.has(cardId)) continue;
-    // 按鈕標籤加上數值
-    let label = `${card.name}(⚡${card.cost})`;
-    if (card.dmg && (card.dmg[0] > 0 || card.dmg[1] > 0)) {
-      const bonus = card.bonus ? `+${card.bonus}` : '';
-      label += ` ${card.dmg[0]}~${card.dmg[1]}${bonus}傷`;
-    } else if (card.bonus && card.type === 'attack') {
-      label += ` +${card.bonus}傷`;
-    }
-    if (card.shield && card.type === 'defense') label += ` +${card.shield}盾`;
-    if (card.heal) label += ` +${card.heal}血`;
-    if (card.draw) label += ` 抽${card.draw}`;
-    playable.push({ idx: i, card, cardId, label: label.substring(0, 80) });
-  }
-
-  const rows = [];
-  for (let i = 0; i < playable.length; i += 5) {
-    if (rows.length >= 4) break; // 最多 4 行牌 + 1 行控制
-    const row = new ActionRowBuilder();
-    for (const p of playable.slice(i, i + 5)) {
-      row.addComponents(
-        new ButtonBuilder()
-          .setCustomId(`cp_${ts}_${p.idx}`)
-          .setLabel(p.label)
-          .setStyle(p.card.type === 'attack' ? ButtonStyle.Danger : p.card.type === 'defense' ? ButtonStyle.Primary : p.card.type === 'heal' ? ButtonStyle.Success : ButtonStyle.Secondary)
-      );
-    }
-    rows.push(row);
-  }
-
-  // 控制按鈕
-  rows.push(new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`cv_${ts}`).setLabel('🃏 查看手牌').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`ce_${ts}`).setLabel('⏭️ 結束回合').setStyle(ButtonStyle.Danger),
-  ));
+    return card && card.cost <= current.ap && !(card.oncePerBattle && current.usedOnce.has(cardId));
+  });
 
   const msg = await channel.send({
     content: `<@${current.id}>`,
-    embeds: [e(`⚡ **${current.name}** 的行動點：${current.ap} / ${ACTION_POINTS}\n手牌：${current.hand.length} 張\n\n${playable.length > 0 ? '選擇要出的牌，或結束回合' : '沒有可出的牌，請結束回合'}`)],
-    components: rows,
+    embeds: [e(`⚡ **${current.name}** 的回合\n行動點：${current.ap} / ${ACTION_POINTS} ｜ 手牌：${current.hand.length} 張\n\n${hasPlayable ? '按「🃏 出牌」選擇要打的牌' : '沒有可出的牌，請結束回合'}`)],
+    components: [ctrlRow],
   });
 
   const collector = msg.createMessageComponentCollector({ time: 120000 });
 
   collector.on('collect', async (i) => {
-    // 查看手牌
-    if (i.customId === `cv_${ts}`) {
-      const p = battle.players.find(p => p.id === i.user.id);
-      if (!p) return i.reply({ embeds: [e('❌ 你不在這場對戰中！')], flags: MessageFlags.Ephemeral });
-      return i.reply({ embeds: [e(`🃏 **你的手牌：**\n${handText(p)}`)], flags: MessageFlags.Ephemeral });
-    }
-
-    // 只有當前玩家能操作
     if (i.user.id !== current.id) {
       return i.reply({ embeds: [e('❌ 不是你的回合！')], flags: MessageFlags.Ephemeral });
     }
 
-    // 結束回合
-    if (i.customId === `ce_${ts}`) {
+    if (i.customId === `cp_end_${ts}`) {
       collector.stop('ended');
       await i.update({ components: [] });
       await endTurn(channel, battle);
       return;
     }
 
-    // 出牌
-    if (i.customId.startsWith(`cp_${ts}_`)) {
-      const idx = parseInt(i.customId.replace(`cp_${ts}_`, ''));
-      const cardId = current.hand[idx];
-      const card = getCard(cardId);
-
-      if (!card || card.cost > current.ap) {
-        return i.reply({ embeds: [e('❌ 行動點不足！')], flags: MessageFlags.Ephemeral });
-      }
-      if (card.oncePerBattle && current.usedOnce.has(cardId)) {
-        return i.reply({ embeds: [e('❌ 這張牌本場已經用過了！')], flags: MessageFlags.Ephemeral });
-      }
-
-      // 消耗行動點 + 移除手牌
-      current.ap -= card.cost;
-      current.hand.splice(idx, 1);
-      current.discard.push(cardId);
-      if (card.oncePerBattle) current.usedOnce.add(cardId);
-
-      // 執行卡牌效果
-      collector.stop('played');
-      const result = await executeCard(battle, battle.turnIndex, card);
-      await i.update({ components: [] });
-      await channel.send({ embeds: [e(`${typeIcon(card.type)} **${current.name}** 使用了 **${card.name}**！\n\n${result}\n\n${statusText(battle)}`)] });
-
-      // 檢查勝負
-      const opponent = battle.players[1 - battle.turnIndex];
-      if (opponent.hp <= 0) {
-        await endBattle(channel, battle, battle.turnIndex);
-        return;
-      }
-      if (current.hp <= 0) {
-        await endBattle(channel, battle, 1 - battle.turnIndex);
-        return;
-      }
-      if (battle.escaped) {
-        await channel.send({ embeds: [e('🏃 戰鬥以平局結束！')] });
-        battles.delete(battle.channelId);
-        return;
+    if (i.customId === `cp_open_${ts}`) {
+      const pickTs = Date.now();
+      const allCards = [];
+      for (let j = 0; j < current.hand.length; j++) {
+        const cardId = current.hand[j];
+        const card = getCard(cardId);
+        if (!card) continue;
+        const canPlay = card.cost <= current.ap && !(card.oncePerBattle && current.usedOnce.has(cardId));
+        let label = `${card.name}(⚡${card.cost})`;
+        if (card.dmg && (card.dmg[0] > 0 || card.dmg[1] > 0)) {
+          label += ` ${card.dmg[0]}~${card.dmg[1]}${card.bonus ? `+${card.bonus}` : ''}傷`;
+        } else if (card.bonus && card.type === 'attack') {
+          label += ` +${card.bonus}傷`;
+        }
+        if (card.shield && card.type === 'defense') label += ` +${card.shield}盾`;
+        if (card.heal) label += ` +${card.heal}血`;
+        if (card.draw) label += ` 抽${card.draw}`;
+        allCards.push({ idx: j, card, cardId, label: label.substring(0, 80), canPlay });
       }
 
-      // 繼續出牌或結束
-      if (current.ap > 0 && current.hand.length > 0) {
-        await showPlayMenu(channel, battle);
-      } else {
-        await endTurn(channel, battle);
+      if (allCards.length === 0) {
+        return i.reply({ embeds: [e('❌ 沒有手牌！')], flags: MessageFlags.Ephemeral });
+      }
+
+      const rows = [];
+      for (let j = 0; j < allCards.length; j += 5) {
+        if (rows.length >= 4) break;
+        const row = new ActionRowBuilder();
+        for (const p of allCards.slice(j, j + 5)) {
+          row.addComponents(
+            new ButtonBuilder()
+              .setCustomId(`cps_${pickTs}_${p.idx}`)
+              .setLabel(p.label)
+              .setStyle(p.card.type === 'attack' ? ButtonStyle.Danger : p.card.type === 'defense' ? ButtonStyle.Primary : p.card.type === 'heal' ? ButtonStyle.Success : ButtonStyle.Secondary)
+              .setDisabled(!p.canPlay)
+          );
+        }
+        rows.push(row);
+      }
+      rows.push(new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`cps_${pickTs}_cancel`).setLabel('↩️ 取消').setStyle(ButtonStyle.Secondary)
+      ));
+
+      await i.reply({
+        embeds: [e(`🃏 **選擇要出的牌：**\n⚡ 行動點：${current.ap}`)],
+        components: rows,
+        flags: MessageFlags.Ephemeral,
+      });
+
+      try {
+        const reply = await i.fetchReply();
+        const pi = await reply.awaitMessageComponent({
+          filter: pi => pi.customId.startsWith(`cps_${pickTs}_`) && pi.user.id === current.id,
+          time: 60000,
+        });
+
+        if (pi.customId === `cps_${pickTs}_cancel`) {
+          await pi.update({ embeds: [e('↩️ 已取消')], components: [] });
+          return;
+        }
+
+        const idx = parseInt(pi.customId.replace(`cps_${pickTs}_`, ''));
+        const cardId = current.hand[idx];
+        const card = getCard(cardId);
+
+        if (!card || card.cost > current.ap) {
+          await pi.update({ embeds: [e('❌ 行動點不足！')], components: [] });
+          return;
+        }
+
+        current.ap -= card.cost;
+        current.hand.splice(idx, 1);
+        current.discard.push(cardId);
+        if (card.oncePerBattle) current.usedOnce.add(cardId);
+
+        await pi.update({ embeds: [e(`✅ 使用了 ${card.name}`)], components: [] });
+
+        const result = await executeCard(battle, battle.turnIndex, card);
+        collector.stop('played');
+        await msg.edit({ components: [] });
+        await channel.send({ embeds: [e(`${typeIcon(card.type)} **${current.name}** 使用了 **${card.name}**！\n\n${result}\n\n${statusText(battle)}`)] });
+
+        const opponent = battle.players[1 - battle.turnIndex];
+        if (opponent.hp <= 0) { await endBattle(channel, battle, battle.turnIndex); return; }
+        if (current.hp <= 0) { await endBattle(channel, battle, 1 - battle.turnIndex); return; }
+        if (battle.escaped) {
+          await channel.send({ embeds: [e('🏃 戰鬥以平局結束！')] });
+          battle.phase = 'ended'; battles.delete(battle.channelId); return;
+        }
+
+        if (current.ap > 0 && current.hand.length > 0) {
+          await showPlayMenu(channel, battle);
+        } else {
+          await endTurn(channel, battle);
+        }
+      } catch {
+        // ephemeral 超時，回到公開選單繼續等
       }
     }
   });
@@ -491,13 +501,13 @@ async function executeCard(battle, playerIdx, card) {
         break;
       case 'curePoison':
         delete self.debuffs.poison;
-        drawCards(self, card.draw);
-        log = `🟢 移除中毒 + 抽 ${card.draw} 牌`;
+        if (card.draw) drawCards(self, card.draw);
+        log = '🟢 移除中毒！';
         break;
       case 'cureParalyze':
         delete self.debuffs.paralyze;
-        drawCards(self, card.draw);
-        log = `⚡ 移除麻痺 + 抽 ${card.draw} 牌`;
+        if (card.draw) drawCards(self, card.draw);
+        log = '⚡ 移除麻痺！';
         break;
       case 'atkBoostBuff':
         self.buffs.atkBoost = { pct: card.boostPct, turns: card.buffTurns };
