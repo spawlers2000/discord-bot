@@ -70,7 +70,7 @@ function statusText(battle) {
 }
 
 function statusLine(p) {
-  let s = `❤️ ${p.hp}/100 ｜ 🛡️ ${p.shield} ｜ ⚡ ${p.ap}`;
+  let s = `❤️ ${p.hp}/${START_HP} ｜ 🛡️ ${p.shield} ｜ ⚡ ${p.ap}`;
   const effects = [];
   if (p.debuffs.poison) effects.push(`🟣 中毒(${p.debuffs.poison.turns}回合)`);
   if (p.debuffs.paralyze) effects.push(`⚡ 麻痺(${p.debuffs.paralyze.turns}回合)`);

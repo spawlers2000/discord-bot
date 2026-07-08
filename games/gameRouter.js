@@ -5,6 +5,7 @@ import werewordsCommands from './werewords.js';
 import undercoverCommands from './undercover.js';
 import coupCommands from './coup.js';
 import cardBattleCommands from './cardBattle.js';
+import tictactoeCommands from './tictactoe.js';
 
 // 賓果指令對應
 const bingoMap = { bs: 'bs', bj: 'bj', bb: 'bb', bc: 'bc', bl: 'bl', bq: 'bq', br: 'br' };
@@ -20,6 +21,8 @@ const ucMap = { us: 'us', uj: 'uj', ub: 'ub', ud: 'ud', uq: 'uq', ul: 'ul' };
 const coupMap = { cs: 'cs', cj: 'cj', cb: 'cb', cc: 'cc', ch: 'ch', cq: 'cq', cl: 'cl' };
 // 卡牌對戰指令對應
 const cardMap = { reg: 'reg', ri: 'ri', rd: 'rd', rr: 'rr', rq: 'rq', rc: 'rc' };
+// OOXX 指令對應
+const ooMap = { os: 'os', oq: 'oq' };
 
 export function setupGameRouter(client) {
   client.on('messageCreate', async (message) => {
@@ -82,6 +85,14 @@ export function setupGameRouter(client) {
         const channelIds = (process.env.CARD_CHANNEL_IDS || '').split(',').filter(Boolean);
         if (channelIds.length > 0 && !channelIds.includes(message.channel.id)) return;
         await cardBattleCommands[cmd](message, args);
+        return;
+      }
+
+      // OOXX 指令
+      if (ooMap[cmd]) {
+        const channelId = process.env.OOXX_CHANNEL_ID;
+        if (channelId && message.channel.id !== channelId) return;
+        await tictactoeCommands[cmd](message, args);
         return;
       }
     } catch (err) {
