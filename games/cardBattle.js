@@ -70,7 +70,7 @@ function statusText(battle) {
 }
 
 function statusLine(p) {
-  let s = `❤️ ${p.hp}/${START_HP} ｜ 🛡️ ${p.shield} ｜ ⚡ ${p.ap}`;
+  let s = `❤️ ${p.hp}/${START_HP} ｜ 🛡️ ${p.shield}`;
   const effects = [];
   if (p.debuffs.poison) effects.push(`🟣 中毒(${p.debuffs.poison.turns}回合)`);
   if (p.debuffs.paralyze) effects.push(`⚡ 麻痺(${p.debuffs.paralyze.turns}回合)`);
@@ -155,13 +155,12 @@ async function startTurn(channel, battle) {
   if (battle.phase !== 'playing') return;
   const current = battle.players[battle.turnIndex];
 
-  // 麻痺跳過
+  // 麻痺：行動點剩 2
   if (current.debuffs.paralyze) {
     current.debuffs.paralyze.turns--;
     if (current.debuffs.paralyze.turns <= 0) delete current.debuffs.paralyze;
-    await channel.send({ embeds: [e(`⚡ **${current.name}** 被麻痺，無法行動！`)] });
-    await endTurn(channel, battle);
-    return;
+    await channel.send({ embeds: [e(`⚡ **${current.name}** 被麻痺，行動點只有 2！`)] });
+    current.ap = 2;
   }
 
   // 抽牌
@@ -296,7 +295,10 @@ async function showPlayMenu(channel, battle) {
         const result = await executeCard(battle, battle.turnIndex, card);
         collector.stop('played');
         await msg.edit({ components: [] });
-        await channel.send({ embeds: [e(`${typeIcon(card.type)} **${current.name}** 使用了 **${card.name}**！\n\n${result}\n\n${statusText(battle)}`)] });
+        // 解麻藥完全不公告（隱藏策略）
+        if (card.fn !== 'immuneParalyze') {
+          await channel.send({ embeds: [e(`${typeIcon(card.type)} **${current.name}** 使用了 **${card.name}**！\n\n${result}\n\n${statusText(battle)}`)] });
+        }
 
         const opponent = battle.players[1 - battle.turnIndex];
         if (opponent.hp <= 0) { await endBattle(channel, battle, battle.turnIndex); return; }
@@ -418,17 +420,28 @@ async function executeCard(battle, playerIdx, card) {
         log += `🟣 對手中毒 ${card.poisonTurns} 回合（每回合 ${card.poisonDmg}）`;
         break;
       case 'paralyze':
-        opponent.debuffs.paralyze = { turns: 1 };
-        log += log ? '\n' : '';
-        log += `⚡ 對手麻痺 1 回合！`;
+        if (opponent.buffs.paralyzeImmune) {
+          delete opponent.buffs.paralyzeImmune;
+          log += log ? '\n' : '';
+          log += '🛡️ 對手免疫麻痺！無效！';
+        } else {
+          opponent.debuffs.paralyze = { turns: 1 };
+          log += log ? '\n' : '';
+          log += '⚡ 對手麻痺 1 回合！';
+        }
         break;
       case 'applyPoison':
         opponent.debuffs.poison = { turns: card.poisonTurns, dmg: card.poisonDmg };
         log = `🟣 對手中毒 ${card.poisonTurns} 回合（每回合 ${card.poisonDmg}）`;
         break;
       case 'applyParalyze':
-        opponent.debuffs.paralyze = { turns: 1 };
-        log = `⚡ 對手麻痺 1 回合！`;
+        if (opponent.buffs.paralyzeImmune) {
+          delete opponent.buffs.paralyzeImmune;
+          log = '🛡️ 對手免疫麻痺！無效！';
+        } else {
+          opponent.debuffs.paralyze = { turns: 1 };
+          log = '⚡ 對手麻痺 1 回合！';
+        }
         break;
       case 'chain': {
         // 已計算基礎傷害，50% 追加
@@ -505,9 +518,14 @@ async function executeCard(battle, playerIdx, card) {
         log = '🟢 移除中毒！';
         break;
       case 'cureParalyze':
-        delete self.debuffs.paralyze;
-        if (card.draw) drawCards(self, card.draw);
-        log = '⚡ 移除麻痺！';
+      case 'immuneParalyze':
+        if (self.debuffs.paralyze) {
+          delete self.debuffs.paralyze;
+          log = '⚡ 移除麻痺！';
+        } else {
+          self.buffs.paralyzeImmune = { turns: 1 };
+          log = '🛡️ 免疫麻痺（1回合）！';
+        }
         break;
       case 'atkBoostBuff':
         self.buffs.atkBoost = { pct: card.boostPct, turns: card.buffTurns };

@@ -128,8 +128,8 @@ const CARDS = {
   heal_antidote:   { name: '解毒藥',          type: 'heal', cost: 0, fn: 'curePoison', effect: '移除中毒' },
   heal_antidote_1: { name: '解毒藥+1',        type: 'heal', cost: 0, fn: 'curePoison', effect: '移除中毒' },
 
-  heal_antistun:   { name: '解麻藥',          type: 'heal', cost: 0, fn: 'cureParalyze', effect: '移除麻痺' },
-  heal_antistun_1: { name: '解麻藥+1',        type: 'heal', cost: 0, fn: 'cureParalyze', effect: '移除麻痺' },
+  heal_antistun:   { name: '解麻藥',          type: 'heal', cost: 0, fn: 'immuneParalyze', effect: '免疫麻痺（1回合）或移除麻痺' },
+  heal_antistun_1: { name: '解麻藥+1',        type: 'heal', cost: 0, fn: 'immuneParalyze', effect: '免疫麻痺（1回合）或移除麻痺' },
 
   heal_spring:     { name: '泉源之力',        type: 'heal', cost: 1, fn: 'atkBoostBuff', boostPct: 30, buffTurns: 1, oncePerBattle: true, effect: '攻擊力 +30%（1回合，每場限1次）' },
 

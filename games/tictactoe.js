@@ -151,6 +151,45 @@ async function startTurn(channel, state) {
   const ts = Date.now();
   state.selectedSize = null;
 
+  // 檢查當前玩家是否有任何合法動作
+  let hasValidMove = false;
+  for (const size of [1, 2, 3]) {
+    if (current.pieces[size] <= 0) continue;
+    for (let i = 0; i < 9; i++) {
+      if (canPlace(state.board[i], size)) { hasValidMove = true; break; }
+    }
+    if (hasValidMove) break;
+  }
+
+  if (!hasValidMove) {
+    // 當前玩家無法行動，檢查對手
+    const other = state.players[1 - state.turn];
+    let otherHasMove = false;
+    for (const size of [1, 2, 3]) {
+      if (other.pieces[size] <= 0) continue;
+      for (let i = 0; i < 9; i++) {
+        if (canPlace(state.board[i], size)) { otherHasMove = true; break; }
+      }
+      if (otherHasMove) break;
+    }
+
+    if (!otherHasMove) {
+      // 雙方都無法行動 → 平手
+      await channel.send({
+        embeds: [e(`⚖️ **平手！** 雙方都無法放置棋子\n\n${boardText(state)}`)],
+        components: buildBoardButtons(state.board, ts, true),
+      });
+      games.delete(channel.id);
+      return;
+    }
+
+    // 只有當前玩家無法行動 → 跳過
+    await channel.send({ embeds: [e(`⏭️ **${current.name}** 沒有可放的棋子，跳過！`)] });
+    state.turn = 1 - state.turn;
+    await startTurn(channel, state);
+    return;
+  }
+
   // 棋子選擇按鈕
   const sizeRow = new ActionRowBuilder();
   for (const size of [1, 2, 3]) {
