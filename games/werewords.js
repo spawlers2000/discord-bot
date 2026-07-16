@@ -130,7 +130,46 @@ async function sendQARecords(guild) {
     } catch {}
   }
 }
-function shuffle(arr) {
+// 角色歷史紀錄（防重複，跨遊戲，重啟清空）
+const roleHistory = new Map(); // playerId → [最近的角色, 上上次的角色]
+
+function recordRoles(players) {
+  for (const p of players) {
+    const history = roleHistory.get(p.id) || [];
+    history.unshift(p.role);
+    if (history.length > 3) history.pop();
+    roleHistory.set(p.id, history);
+  }
+}
+
+function assignRolesAntiRepeat(players, config) {
+  const roles = [];
+  for (const [role, num] of Object.entries(config)) {
+    for (let i = 0; i < num; i++) roles.push(role);
+  }
+
+  let bestShuffle = shuffle(roles);
+  let bestScore = 0;
+
+  // 嘗試 50 次，找重複最少的分配
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const candidate = shuffle(roles);
+    let score = 0;
+    for (let i = 0; i < players.length; i++) {
+      const history = roleHistory.get(players[i].id) || [];
+      const role = candidate[i];
+      if (!history.includes(role)) score++;
+      else if (history[0] !== role) score += 0.5; // 不是上一局的角色，好一點
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestShuffle = candidate;
+    }
+    if (score === players.length) break; // 完美，全部不重複
+  }
+
+  players.forEach((p, i) => { p.role = bestShuffle[i]; });
+}
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -491,10 +530,8 @@ const commands = {
     if (state.players.length < 4) return message.reply({ embeds: [e('❌ 至少需要 4 人！')] });
 
     const config = getRoleConfig(state.players.length);
-    const roles = [];
-    for (const [role, num] of Object.entries(config)) { for (let i = 0; i < num; i++) roles.push(role); }
-    const shuffled = shuffle(roles);
-    state.players.forEach((p, i) => { p.role = shuffled[i]; });
+    assignRolesAntiRepeat(state.players, config);
+    recordRoles(state.players);
 
     const mayor = state.players.find(p => p.role === 'mayor');
     state.mayorId = mayor.id;
