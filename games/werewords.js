@@ -170,6 +170,8 @@ function assignRolesAntiRepeat(players, config) {
 
   players.forEach((p, i) => { p.role = bestShuffle[i]; });
 }
+
+function shuffle(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
