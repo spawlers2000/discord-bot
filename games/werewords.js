@@ -170,6 +170,8 @@ function assignRolesAntiRepeat(players, config) {
 
   players.forEach((p, i) => { p.role = bestShuffle[i]; });
 }
+
+function shuffle(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -198,6 +200,7 @@ async function showMayorPanel(channel, content, askerName) {
   );
 
   const msg = await channel.send({
+    content: `<@${state.mayorId}>`,
     embeds: [e(`💬 **${askerName}**：「${content}」\n\n👑 村長請用按鈕回答：`)],
     components: [row1, row2],
   });
