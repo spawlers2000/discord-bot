@@ -259,6 +259,27 @@ const commands = {
     games.delete(message.channel.id);
   },
 
+  async hl(message) {
+    const state = games.get(message.channel.id);
+    if (!state) return message.reply({ embeds: [e('❌ 沒有進行中的海龜湯！')] });
+
+    if (state.qaLog.length === 0) {
+      return message.channel.send({ embeds: [e('🐢 **提問紀錄**\n\n目前還沒有人提問。')] });
+    }
+
+    const log = state.qaLog.map((qa, i) =>
+      `**Q${i + 1}.** ${qa.asker}：「${qa.question}」\n→ ${qa.answer}`
+    ).join('\n\n');
+
+    message.channel.send({
+      embeds: [new EmbedBuilder()
+        .setColor(GOLD)
+        .setTitle(`🐢 提問紀錄（共 ${state.qaLog.length} 題）`)
+        .setDescription(log.length > 4000 ? log.substring(0, 4000) + '\n\n...（太長已截斷）' : log)
+      ],
+    });
+  },
+
   async hq(message) {
     const state = games.get(message.channel.id);
     if (!state) return message.reply({ embeds: [e('❌ 沒有進行中的海龜湯！')] });

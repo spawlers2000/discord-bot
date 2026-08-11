@@ -25,7 +25,7 @@ const cardMap = { reg: 'reg', ri: 'ri', rd: 'rd', rr: 'rr', rq: 'rq', rc: 'rc' }
 // OOXX 指令對應
 const ooMap = { os: 'os', oq: 'oq' };
 // 海龜湯指令對應
-const turtleMap = { hs: 'hs', hg: 'hg', ha: 'ha', hq: 'hq' };
+const turtleMap = { hs: 'hs', hg: 'hg', ha: 'ha', hl: 'hl', hq: 'hq' };
 
 export function setupGameRouter(client) {
   client.on('messageCreate', async (message) => {
