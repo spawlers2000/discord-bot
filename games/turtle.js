@@ -208,7 +208,7 @@ const commands = {
 
     const collector = qMsg.createMessageComponentCollector({
       filter: i => i.customId.startsWith(`hg_${ts}_`) && i.user.id === state.hostId,
-      max: 1, time: 600000,
+      max: 1, time: 86400000,
     });
 
     collector.on('collect', async (i) => {
@@ -235,6 +235,10 @@ const commands = {
         await i.update({
           embeds: [e(`💬 Q${qNum}. **${askerName}**：「${question}」\n\n👑 回答：**${labels[response]}**`)],
           components: [],
+        });
+        // 自動發最新一條紀錄
+        await message.channel.send({
+          embeds: [e(`📋 Q${qNum}. ${askerName}：「${question}」→ ${labels[response]}`)],
         });
       }
     });
@@ -271,11 +275,13 @@ const commands = {
       `**Q${i + 1}.** ${qa.asker}：「${qa.question}」\n→ ${qa.answer}`
     ).join('\n\n');
 
+    const fullText = `**湯面：**\n${state.puzzle}\n\n──────────\n\n${log}`;
+
     message.channel.send({
       embeds: [new EmbedBuilder()
         .setColor(GOLD)
         .setTitle(`🐢 提問紀錄（共 ${state.qaLog.length} 題）`)
-        .setDescription(log.length > 4000 ? log.substring(0, 4000) + '\n\n...（太長已截斷）' : log)
+        .setDescription(fullText.length > 4000 ? fullText.substring(0, 4000) + '\n\n...（太長已截斷）' : fullText)
       ],
     });
   },
