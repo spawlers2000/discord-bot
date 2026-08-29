@@ -5,6 +5,7 @@ import { Client, GatewayIntentBits, Collection } from "discord.js";
 
 import * as partyCommand       from "./commands/party.js";
 import * as announceCommand    from "./commands/announce.js";
+import * as gameSignupCommand  from "./games/gameSignup.js";
 import { handleModal }         from "./handlers/modalHandler.js";
 import {
   handleConfigSelect,
@@ -27,6 +28,7 @@ const client = new Client({
 client.commands = new Collection();
 client.commands.set(partyCommand.data.name,    partyCommand);
 client.commands.set(announceCommand.data.name, announceCommand);
+client.commands.set(gameSignupCommand.data.name, gameSignupCommand);
 
 // ─────────────────────────────────────────────────────
 //  資料儲存（記憶體）
