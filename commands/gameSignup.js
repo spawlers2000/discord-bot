@@ -7,7 +7,7 @@ const CHANNEL_ID = process.env.SIGNUP_CHANNEL_ID || '1482375700299251753';
 const signups = new Map();
 
 // Slash Command 定義
-const data = new SlashCommandBuilder()
+export const data = new SlashCommandBuilder()
   .setName('遊戲')
   .setDescription('發起遊戲報名')
   .addStringOption(option =>
@@ -61,7 +61,7 @@ function buildButtons(ts) {
 }
 
 // 執行 Slash Command
-async function execute(interaction) {
+export async function execute(interaction) {
   if (interaction.channel.id !== CHANNEL_ID) {
     return interaction.reply({ content: '❌ 此指令只能在指定頻道使用！', ephemeral: true });
   }
@@ -154,4 +154,4 @@ async function execute(interaction) {
   });
 }
 
-export { data, execute };
+

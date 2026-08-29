@@ -7,10 +7,10 @@
   "scripts": {
     "start": "node index.js",
     "register": "node deploy-commands.js"
-   
   },
   "dependencies": {
     "discord.js": "^14.15.3",
+    "dotenv": "^17.4.2",
     "mongoose": "^8.4.0"
   },
   "engines": {
