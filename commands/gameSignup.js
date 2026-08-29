@@ -107,7 +107,8 @@ export async function execute(interaction) {
       }
       signups.delete(msg.id);
       collector.stop();
-      await i.update({ embeds: [new EmbedBuilder().setColor(ORANGE).setDescription('🗑️ 此報名已被刪除')], components: [] });
+      await i.update({ content: '🗑️ 此報名已被刪除', embeds: [], components: [] });
+      setTimeout(() => { msg.delete().catch(() => {}); }, 3000);
       return;
     }
 

@@ -5,7 +5,7 @@ import { Client, GatewayIntentBits, Collection } from "discord.js";
 
 import * as partyCommand       from "./commands/party.js";
 import * as announceCommand    from "./commands/announce.js";
-import * as gameSignupCommand  from "./commands/gameSignup.js";
+import * as gameSignupCommand  from "./games/gameSignup.js";
 import { handleModal }         from "./handlers/modalHandler.js";
 import {
   handleConfigSelect,
@@ -16,6 +16,7 @@ import { handlePartyButton }   from "./handlers/buttonHandler.js";
 import { startAnnounceScheduler } from "./utils/announceScheduler.js";
 import { connectDB } from "./utils/db.js";
 import { setupGameRouter } from "./games/gameRouter.js";
+import { createPersistentMap } from "./utils/persistentMap.js";
 
 // ─────────────────────────────────────────────────────
 //  Client
@@ -37,7 +38,7 @@ client.commands.set(gameSignupCommand.data.name, gameSignupCommand);
 //  公告設定改存 data/announceConfig.json（重啟不消失）
 // ─────────────────────────────────────────────────────
 const draftStore = new Map();
-const partyStore = new Map();
+const partyStore = createPersistentMap('./data/partyStore.json');
 
 // ─────────────────────────────────────────────────────
 //  Ready
