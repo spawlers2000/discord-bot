@@ -5,7 +5,7 @@ import { Client, GatewayIntentBits, Collection } from "discord.js";
 
 import * as partyCommand       from "./commands/party.js";
 import * as announceCommand    from "./commands/announce.js";
-import * as gameSignupCommand  from "./games/gameSignup.js";
+import * as gameSignupCommand  from "./commands/gameSignup.js";
 import { handleModal }         from "./handlers/modalHandler.js";
 import {
   handleConfigSelect,
