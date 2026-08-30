@@ -17,31 +17,34 @@ export const data = new SlashCommandBuilder()
     option.setName('日期').setDescription('遊玩日期（例如 2026/08/29）').setRequired(true)
   )
   .addIntegerOption(option =>
-    option.setName('人數上限').setDescription('人數上限（不填則不限）').setRequired(false).setMinValue(1).setMaxValue(100)
+    option.setName('每時段人數').setDescription('每個時段的人數上限（不填則不限）').setRequired(false).setMinValue(1).setMaxValue(100)
   );
 
 // 建立報名 Embed
 function buildEmbed(state) {
-  const { gameName, date, maxPlayers, creatorName, morning, afternoon, evening } = state;
+  const { gameName, date, maxPlayers, creatorName, morning, afternoon, evening, midnight } = state;
 
-  const totalPlayers = new Set([...morning, ...afternoon, ...evening]);
-  const playerCount = totalPlayers.size;
-  const limitText = maxPlayers ? `${playerCount} / ${maxPlayers}` : `${playerCount}`;
+  const limitTag = maxPlayers ? `（上限 ${maxPlayers}人/時段）` : '';
+  const morningCount = maxPlayers ? `${morning.length}/${maxPlayers}` : `${morning.length}`;
+  const afternoonCount = maxPlayers ? `${afternoon.length}/${maxPlayers}` : `${afternoon.length}`;
+  const eveningCount = maxPlayers ? `${evening.length}/${maxPlayers}` : `${evening.length}`;
+  const midnightCount = maxPlayers ? `${midnight.length}/${maxPlayers}` : `${midnight.length}`;
 
   const morningList = morning.length > 0 ? morning.map(p => p.name).join('、') : '—';
   const afternoonList = afternoon.length > 0 ? afternoon.map(p => p.name).join('、') : '—';
   const eveningList = evening.length > 0 ? evening.map(p => p.name).join('、') : '—';
+  const midnightList = midnight.length > 0 ? midnight.map(p => p.name).join('、') : '—';
 
   return new EmbedBuilder()
     .setColor(ORANGE)
     .setTitle(`🎮 ${gameName}`)
     .setDescription(
-      `📅 **日期：**${date}\n` +
-      `👥 **報名人數：**${limitText}\n` +
+      `📅 **日期：**${date}${limitTag}\n` +
       `👑 **發起人：**${creatorName}\n\n` +
-      `🌅 **早上**（${morning.length}人）：${morningList}\n\n` +
-      `🌤️ **下午**（${afternoon.length}人）：${afternoonList}\n\n` +
-      `🌙 **晚上**（${evening.length}人）：${eveningList}`
+      `🌅 **早上**（${morningCount}）：${morningList}\n\n` +
+      `🌤️ **下午**（${afternoonCount}）：${afternoonList}\n\n` +
+      `🌙 **晚上**（${eveningCount}）：${eveningList}\n\n` +
+      `🌃 **半夜**（${midnightCount}）：${midnightList}`
     )
     .setTimestamp();
 }
@@ -52,6 +55,7 @@ function buildButtons(ts) {
       new ButtonBuilder().setCustomId(`signup_${ts}_morning`).setLabel('🌅 早上').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`signup_${ts}_afternoon`).setLabel('🌤️ 下午').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`signup_${ts}_evening`).setLabel('🌙 晚上').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`signup_${ts}_midnight`).setLabel('🌃 半夜').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`signup_${ts}_cancel`).setLabel('❌ 取消報名').setStyle(ButtonStyle.Secondary),
     ),
     new ActionRowBuilder().addComponents(
@@ -68,7 +72,7 @@ export async function execute(interaction) {
 
   const gameName = interaction.options.getString('名稱');
   const date = interaction.options.getString('日期');
-  const maxPlayers = interaction.options.getInteger('人數上限');
+  const maxPlayers = interaction.options.getInteger('每時段人數');
   const ts = Date.now();
 
   const state = {
@@ -77,9 +81,10 @@ export async function execute(interaction) {
     maxPlayers,
     creatorId: interaction.user.id,
     creatorName: interaction.member.displayName,
-    morning: [],   // [{ id, name }]
+    morning: [],
     afternoon: [],
     evening: [],
+    midnight: [],
     ts,
   };
 
@@ -118,31 +123,27 @@ export async function execute(interaction) {
       s.morning = s.morning.filter(p => p.id !== userId);
       s.afternoon = s.afternoon.filter(p => p.id !== userId);
       s.evening = s.evening.filter(p => p.id !== userId);
+      s.midnight = s.midnight.filter(p => p.id !== userId);
       await i.update({ embeds: [buildEmbed(s)], components: buildButtons(ts) });
       return;
     }
 
     // 選擇時段
-    const slotMap = { morning: s.morning, afternoon: s.afternoon, evening: s.evening };
+    const slotMap = { morning: s.morning, afternoon: s.afternoon, evening: s.evening, midnight: s.midnight };
     const slot = slotMap[action];
     if (!slot) return;
 
     const userId = i.user.id;
     const userName = i.member.displayName;
 
-    // 檢查人數上限
-    if (s.maxPlayers) {
-      const totalPlayers = new Set([...s.morning.map(p => p.id), ...s.afternoon.map(p => p.id), ...s.evening.map(p => p.id)]);
-      if (!totalPlayers.has(userId) && totalPlayers.size >= s.maxPlayers) {
-        return i.reply({ content: `❌ 已達人數上限 ${s.maxPlayers} 人！`, ephemeral: true });
-      }
-    }
-
-    // 切換：已選 → 取消，未選 → 加入
+    // 檢查該時段人數上限
     const existing = slot.findIndex(p => p.id === userId);
     if (existing >= 0) {
       slot.splice(existing, 1);
     } else {
+      if (s.maxPlayers && slot.length >= s.maxPlayers) {
+        return i.reply({ content: `❌ 這個時段已達人數上限 ${s.maxPlayers} 人！`, ephemeral: true });
+      }
       slot.push({ id: userId, name: userName });
     }
 
