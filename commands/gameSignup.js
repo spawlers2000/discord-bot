@@ -24,6 +24,14 @@ export const data = new SlashCommandBuilder()
 function buildEmbed(state) {
   const { gameName, date, maxPlayers, creatorName, morning, afternoon, evening, midnight } = state;
 
+  // 計算星期幾
+  const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+  let dateDisplay = date;
+  try {
+    const d = new Date(date.replace(/\//g, '-'));
+    if (!isNaN(d)) dateDisplay = `${date}（${weekDays[d.getDay()]}）`;
+  } catch {}
+
   const limitTag = maxPlayers ? `（上限 ${maxPlayers}人/時段）` : '';
   const morningCount = maxPlayers ? `${morning.length}/${maxPlayers}` : `${morning.length}`;
   const afternoonCount = maxPlayers ? `${afternoon.length}/${maxPlayers}` : `${afternoon.length}`;
@@ -39,7 +47,7 @@ function buildEmbed(state) {
     .setColor(ORANGE)
     .setTitle(`🎮 ${gameName}`)
     .setDescription(
-      `📅 **日期：**${date}${limitTag}\n` +
+      `📅 **日期：**${dateDisplay}${limitTag}\n` +
       `👑 **發起人：**${creatorName}\n\n` +
       `🌅 **早上**（${morningCount}）：${morningList}\n\n` +
       `🌤️ **下午**（${afternoonCount}）：${afternoonList}\n\n` +
