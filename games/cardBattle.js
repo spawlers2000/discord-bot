@@ -26,7 +26,7 @@ function createBattleState(channelId, p1, p2) {
         buffs: {}, debuffs: {}, usedOnce: new Set(), firstTurn: true },
       { id: p2.id, name: p2.name, hp: START_HP, shield: 0, ap: ACTION_POINTS,
         deck: shuffle([...p2.deck]), hand: [], discard: [],
-        buffs: {}, debuffs: {}, usedOnce: new Set(), firstTurn: true },
+        buffs: {}, debuffs: {}, usedOnce: new Set(), firstTurn: true, isAI: p2.isAI || false },
     ],
     collectors: [],
   };
@@ -171,9 +171,15 @@ async function startTurn(channel, battle) {
   current.shield = 0; // 自己的護盾在自己回合開始時清空
 
   await channel.send({
-    content: `<@${current.id}>`,
-    embeds: [e(`${statusText(battle)}\n\n🎴 **${current.name}** 抽了 ${drawn.length} 張牌（手牌 ${current.hand.length} 張）\n\n輪到你出牌！⚡ 行動點：${current.ap}`)],
+    content: current.isAI ? undefined : `<@${current.id}>`,
+    embeds: [e(`${statusText(battle)}\n\n🎴 **${current.name}** 抽了 ${drawn.length} 張牌（手牌 ${current.hand.length} 張）\n\n${current.isAI ? '🤖 電腦思考中...' : '輪到你出牌！'}`)],
   });
+
+  // AI 自動出牌
+  if (current.isAI) {
+    await doAICardTurn(channel, battle);
+    return;
+  }
 
   await showPlayMenu(channel, battle);
 }
@@ -728,21 +734,20 @@ async function endBattle(channel, battle, winnerIdx) {
 
   await channel.send({ embeds: [e(`🏆🏆🏆 **${winner.name} 獲勝！**\n\n❤️ ${winner.name}：${winner.hp}HP\n💀 ${loser.name}：${loser.hp}HP\n\n回合數：${battle.round}`)] });
 
-  // 更新資料庫
-  const winnerDoc = await CardPlayer.findOne({ discordId: winner.id });
-  const loserDoc = await CardPlayer.findOne({ discordId: loser.id });
+  // 更新資料庫（跳過 AI）
+  const winnerDoc = winner.id !== 'AI' ? await CardPlayer.findOne({ discordId: winner.id }) : null;
+  const loserDoc = loser.id !== 'AI' ? await CardPlayer.findOne({ discordId: loser.id }) : null;
   if (winnerDoc) { winnerDoc.wins++; winnerDoc.loseStreak = 0; await winnerDoc.save(); }
   if (loserDoc) { loserDoc.losses++; loserDoc.loseStreak++; await loserDoc.save(); }
 
-  const playerId_winner = winner.id;
-  const playerId_loser = loser.id;
+  // 勝者三選一獎勵（AI 不需要）
+  if (winner.id !== 'AI') {
+    await showReward(channel, winner.id, '🏆 勝利獎勵！選擇一張卡牌加入牌組：');
+  }
 
-  // 勝者三選一獎勵
-  await showReward(channel, playerId_winner, '🏆 勝利獎勵！選擇一張卡牌加入牌組：');
-
-  // 檢查敗者連敗獎勵
+  // 檢查敗者連敗獎勵（AI 不需要）
   if (loserDoc && loserDoc.loseStreak >= 5 && loserDoc.loseStreak % 5 === 0) {
-    await showReward(channel, playerId_loser, `😢 連敗 ${loserDoc.loseStreak} 場安慰獎！選擇一張卡牌：`);
+    await showReward(channel, loser.id, `😢 連敗 ${loserDoc.loseStreak} 場安慰獎！選擇一張卡牌：`);
   }
 
   battles.delete(battle.channelId);
@@ -856,6 +861,107 @@ async function discardForReward(channel, playerId, newCardId) {
   });
 }
 
+// ─── AI 出牌邏輯 ───
+async function doAICardTurn(channel, battle) {
+  if (battle.phase !== 'playing') return;
+  const ai = battle.players[battle.turnIndex];
+  const opponent = battle.players[1 - battle.turnIndex];
+  const playedCards = [];
+
+  await new Promise(r => setTimeout(r, 1500));
+
+  while (ai.ap > 0 && ai.hand.length > 0) {
+    const card = pickAICard(ai, opponent);
+    if (!card) break;
+
+    const idx = ai.hand.indexOf(card.id);
+    if (idx === -1) break;
+
+    ai.ap -= card.cost;
+    ai.hand.splice(idx, 1);
+    ai.discard.push(card.id);
+    if (card.oncePerBattle) ai.usedOnce.add(card.id);
+
+    const result = await executeCard(battle, battle.turnIndex, card);
+    playedCards.push(`${typeIcon(card.type)} **${card.name}**：${result}`);
+
+    if (opponent.hp <= 0 || ai.hp <= 0) break;
+  }
+
+  // 公告 AI 出的所有牌
+  if (playedCards.length > 0) {
+    await channel.send({
+      embeds: [e(`🤖 **電腦的行動：**\n\n${playedCards.join('\n\n')}\n\n${statusText(battle)}`)],
+    });
+  }
+
+  // 檢查勝負
+  if (opponent.hp <= 0) {
+    await endBattle(channel, battle, battle.turnIndex);
+    return;
+  }
+  if (ai.hp <= 0) {
+    await endBattle(channel, battle, 1 - battle.turnIndex);
+    return;
+  }
+
+  await endTurn(channel, battle);
+}
+
+function pickAICard(ai, opponent) {
+  const playable = [];
+  for (const cardId of ai.hand) {
+    const card = getCard(cardId);
+    if (!card) continue;
+    if (card.cost > ai.ap) continue;
+    if (card.oncePerBattle && ai.usedOnce.has(cardId)) continue;
+    playable.push({ ...card, id: cardId });
+  }
+  if (playable.length === 0) return null;
+
+  const hpPct = ai.hp / START_HP;
+  const oppHpPct = opponent.hp / START_HP;
+
+  // 策略權重
+  const scored = playable.map(card => {
+    let score = Math.random() * 10; // 基礎隨機
+
+    if (card.type === 'attack') {
+      score += 15;
+      if (oppHpPct <= 0.3) score += 20; // 對手低血優先攻擊
+      if (card.dmg) score += (card.dmg[1] + (card.bonus || 0)) * 0.5;
+      if (card.fn === 'poison' || card.fn === 'paralyze') score += 10;
+    }
+
+    if (card.type === 'defense') {
+      score += 10;
+      if (hpPct <= 0.4) score += 15; // 自己低血優先防禦
+      if (card.shield) score += card.shield * 0.3;
+    }
+
+    if (card.type === 'heal') {
+      if (hpPct <= 0.5) score += 25; // 低血優先補
+      if (hpPct <= 0.3) score += 15;
+      if (hpPct > 0.8) score -= 20; // 血多不補
+      if (card.heal) score += card.heal * 0.3;
+    }
+
+    if (card.type === 'special') {
+      score += 8;
+      if (card.fn === 'draw') score += 5;
+      if (card.fn === 'doubleAtk' && oppHpPct <= 0.4) score += 20;
+    }
+
+    // 低費牌微加分（能多出幾張）
+    score += (4 - card.cost) * 2;
+
+    return { card, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0].card;
+}
+
 // ─── 指令 ───
 const commands = {
   // 註冊
@@ -907,12 +1013,29 @@ const commands = {
   },
 
   // 發起對戰
-  async rd(message) {
+  async rd(message, args) {
     const battle = getBattle(message.channel.id);
     if (battle) return message.reply({ embeds: [e('❌ 這個頻道已有進行中的對戰！')] });
 
+    // AI 對戰
+    if (args && args[0] && ['ai', 'AI', '電腦'].includes(args[0])) {
+      const p1 = await CardPlayer.findOne({ discordId: message.author.id });
+      if (!p1) return message.reply({ embeds: [e('❌ 你還沒有註冊！輸入 `!reg`')] });
+
+      const battleState = createBattleState(message.channel.id,
+        { id: message.author.id, name: message.member.displayName, deck: p1.deck },
+        { id: 'AI', name: '🤖 電腦', deck: [...STARTER_DECK, ...STARTER_DECK], isAI: true }
+      );
+      battleState.isAI = true;
+      battles.set(message.channel.id, battleState);
+
+      await message.channel.send({ embeds: [e(`🤖 **${message.member.displayName}** vs **電腦**！你先手！\n\n${statusText(battleState)}`)] });
+      await startRound(message.channel, battleState);
+      return;
+    }
+
     const target = message.mentions.users.first();
-    if (!target) return message.reply({ embeds: [e('❌ 請 @一個對手！例如 `!rd @對手`')] });
+    if (!target) return message.reply({ embeds: [e('❌ 請 @對手 或 `!rd ai` 跟電腦玩')] });
     if (target.id === message.author.id) return message.reply({ embeds: [e('❌ 不能挑戰自己！')] });
 
     const targetMember = await message.guild.members.fetch(target.id);
