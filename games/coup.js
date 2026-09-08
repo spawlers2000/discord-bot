@@ -203,9 +203,9 @@ async function resolveChallenge(channel, challengerId, targetId, claimedRole) {
   }
 }
 
+
 // ─── 反應視窗 ───
 async function showReactionWindow(channel, actionPlayerId, actionText, canChallenge, blockInfo) {
-  // blockInfo: { targetId, blockRoles: ['contessa'], blockText: '阻礙暗殺' } 或 null
   const ts = Date.now();
   const row = new ActionRowBuilder();
 
@@ -213,56 +213,85 @@ async function showReactionWindow(channel, actionPlayerId, actionText, canChalle
     row.addComponents(new ButtonBuilder().setCustomId(`react_${ts}_challenge`).setLabel('❓ 質疑').setStyle(ButtonStyle.Danger));
   }
   if (blockInfo) {
-    row.addComponents(new ButtonBuilder().setCustomId(`react_${ts}_block`).setLabel(`🛡️ 阻礙`).setStyle(ButtonStyle.Primary));
+    row.addComponents(new ButtonBuilder().setCustomId(`react_${ts}_block`).setLabel('🛡️ 阻礙').setStyle(ButtonStyle.Primary));
   }
 
+  const isButtonMode = state.reactionMode === 'button';
+  if (isButtonMode) {
+    row.addComponents(new ButtonBuilder().setCustomId(`react_${ts}_pass`).setLabel('✅ 放行').setStyle(ButtonStyle.Secondary));
+  }
+
+  const timeText = isButtonMode ? '所有人按「放行」後繼續' : '⏱️ 30 秒內可以反應，無人反應則行動成功';
+
   const msg = await channel.send({
-    embeds: [e(`${actionText}\n\n⏱️ 30 秒內可以反應，無人反應則行動成功`)],
+    embeds: [e(`${actionText}\n\n${timeText}`)],
     components: [row],
   });
 
   return new Promise((resolve) => {
     // AI 自動反應
     const aiReactors = getAlivePlayers().filter(p => isAI(p.id) && p.id !== actionPlayerId);
-    let aiHandled = false;
     for (const ai of aiReactors) {
       if (canChallenge && Math.random() < 0.15) {
-        aiHandled = true;
-        msg.edit({ components: [] }).catch(() => {}); resolve({ type: "challenge", playerId: ai.id });
-        break;
+        msg.edit({ components: [] }).catch(() => {});
+        resolve({ type: 'challenge', playerId: ai.id });
+        return;
       }
       if (blockInfo) {
         const canBlock = !blockInfo.targetId || blockInfo.targetId === ai.id || blockInfo.anyoneCanBlock;
         if (canBlock && aiShouldBlock(ai, blockInfo.blockRoles || [])) {
-          aiHandled = true;
-          msg.edit({ components: [] }).catch(() => {}); resolve({ type: "block", playerId: ai.id });
-          break;
+          msg.edit({ components: [] }).catch(() => {});
+          resolve({ type: 'block', playerId: ai.id });
+          return;
         }
       }
     }
-    if (aiHandled) return;
+
+    // 按鈕模式：追蹤已 pass 的人
+    const passed = new Set();
+    for (const ai of aiReactors) passed.add(ai.id);
+    const humanReactors = getAlivePlayers().filter(p => p.id !== actionPlayerId && !isAI(p.id));
+    function allPassed() { return humanReactors.every(p => passed.has(p.id)); }
+
+    // 如果沒有人類需要反應（全是 AI 且都沒反應），直接 pass
+    if (isButtonMode && humanReactors.length === 0) {
+      msg.edit({ embeds: [e(`${actionText}\n\n✅ 無人反應，行動成功！`)], components: [] }).catch(() => {});
+      resolve({ type: 'pass' });
+      return;
+    }
 
     const collector = msg.createMessageComponentCollector({
       filter: i => i.customId.startsWith(`react_${ts}_`) && i.user.id !== actionPlayerId,
-      max: 1, time: REACTION_TIME,
+      time: isButtonMode ? 300000 : REACTION_TIME,
     });
+
     collector.on('collect', async (i) => {
       const action = i.customId.replace(`react_${ts}_`, '');
+
+      if (action === 'pass') {
+        passed.add(i.user.id);
+        await i.reply({ content: '✅ 你選擇放行', ephemeral: true });
+        if (allPassed()) {
+          collector.stop('allpassed');
+          await msg.edit({ embeds: [e(`${actionText}\n\n✅ 所有人放行，行動成功！`)], components: [] });
+          resolve({ type: 'pass' });
+        }
+        return;
+      }
+
       if (action === 'block') {
-        // 只有合法的阻礙者能按
-        if (blockInfo && blockInfo.targetId && i.user.id !== blockInfo.targetId) {
-          // 外援的阻礙任何人都能按
-          if (!blockInfo.anyoneCanBlock) {
-            await i.reply({ embeds: [e('❌ 你不能阻礙這個行動！')], flags: MessageFlags.Ephemeral });
-            return; // 不 resolve，collector 繼續
-          }
+        if (blockInfo && blockInfo.targetId && i.user.id !== blockInfo.targetId && !blockInfo.anyoneCanBlock) {
+          await i.reply({ embeds: [e('❌ 你不能阻礙這個行動！')], flags: MessageFlags.Ephemeral });
+          return;
         }
       }
+      collector.stop('reacted');
       await i.update({ components: [] });
       resolve({ type: action, playerId: i.user.id });
     });
-    collector.on('end', (c) => {
-      if (c.size === 0) {
+
+    collector.on('end', (c, reason) => {
+      if (reason !== 'reacted' && reason !== 'allpassed') {
         msg.edit({ embeds: [e(`${actionText}\n\n✅ 無人反應，行動成功！`)], components: [] }).catch(() => {});
         resolve({ type: 'pass' });
       }
@@ -274,36 +303,65 @@ async function showReactionWindow(channel, actionPlayerId, actionText, canChalle
 // ─── 阻礙後的質疑視窗 ───
 async function showBlockChallengeWindow(channel, blockerId, blockerName, claimedRole) {
   const ts = Date.now();
+  const isButtonMode = state.reactionMode === 'button';
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`blockreact_${ts}_challenge`).setLabel('❓ 質疑阻礙').setStyle(ButtonStyle.Danger)
   );
+  if (isButtonMode) {
+    row.addComponents(new ButtonBuilder().setCustomId(`blockreact_${ts}_pass`).setLabel('✅ 放行').setStyle(ButtonStyle.Secondary));
+  }
+
+  const timeText = isButtonMode ? '所有人按「放行」後繼續' : '⏱️ 30 秒內可以質疑，無人質疑則阻礙成功';
 
   const msg = await channel.send({
-    embeds: [e(`🛡️ **${blockerName}** 宣稱有 ${ROLES[claimedRole].name}，阻礙行動！\n\n⏱️ 30 秒內可以質疑，無人質疑則阻礙成功`)],
+    embeds: [e(`🛡️ **${blockerName}** 宣稱有 ${ROLES[claimedRole].name}，阻礙行動！\n\n${timeText}`)],
     components: [row],
   });
 
   return new Promise((resolve) => {
-    // AI 自動質疑阻礙
     const aiReactors = getAlivePlayers().filter(p => isAI(p.id) && p.id !== blockerId);
     for (const ai of aiReactors) {
       if (Math.random() < 0.2) {
-        msg.edit({ components: [] }).catch(() => {}); resolve({ type: "challenge", playerId: ai.id });
+        msg.edit({ components: [] }).catch(() => {});
+        resolve({ type: 'challenge', playerId: ai.id });
         return;
       }
     }
 
+    const passed = new Set();
+    for (const ai of aiReactors) passed.add(ai.id);
+    const humanReactors = getAlivePlayers().filter(p => p.id !== blockerId && !isAI(p.id));
+    function allPassed() { return humanReactors.every(p => passed.has(p.id)); }
+
+    if (isButtonMode && humanReactors.length === 0) {
+      msg.edit({ embeds: [e(`🛡️ **${blockerName}** 的阻礙成功！無人質疑。`)], components: [] }).catch(() => {});
+      resolve({ type: 'pass' });
+      return;
+    }
+
     const collector = msg.createMessageComponentCollector({
-      filter: i => i.customId === `blockreact_${ts}_challenge` && i.user.id !== blockerId,
-      max: 1, time: REACTION_TIME,
+      filter: i => i.customId.startsWith(`blockreact_${ts}_`) && i.user.id !== blockerId,
+      time: isButtonMode ? 300000 : REACTION_TIME,
     });
     collector.on('collect', async (i) => {
+      const action = i.customId.replace(`blockreact_${ts}_`, '');
+      if (action === 'pass') {
+        passed.add(i.user.id);
+        await i.reply({ content: '✅ 你選擇放行', ephemeral: true });
+        if (allPassed()) {
+          collector.stop('allpassed');
+          await msg.edit({ embeds: [e(`🛡️ **${blockerName}** 的阻礙成功！無人質疑。`)], components: [] });
+          resolve({ type: 'pass' });
+        }
+        return;
+      }
+      collector.stop('reacted');
       await i.update({ components: [] });
       resolve({ type: 'challenge', playerId: i.user.id });
     });
-    collector.on('end', (c) => {
-      if (c.size === 0) {
-        msg.edit({ embeds: [e(`🛡️ **${blockerName}** 的阻礙成功！無人質疑，行動取消。`)], components: [] }).catch(() => {});
+    collector.on('end', (c, reason) => {
+      if (reason !== 'reacted' && reason !== 'allpassed') {
+        msg.edit({ embeds: [e(`🛡️ **${blockerName}** 的阻礙成功！無人質疑。`)], components: [] }).catch(() => {});
         resolve({ type: 'pass' });
       }
     });
@@ -909,6 +967,36 @@ async function selectTarget(channel, player, targets, prompt) {
   });
 }
 
+// ─── 開始遊戲 ───
+async function startGame(message) {
+  state.guild = message.guild;
+  state.deck = buildDeck();
+
+  for (const p of state.players) {
+    p.cards = [state.deck.pop(), state.deck.pop()];
+    p.coins = 2;
+  }
+
+  state.order = shuffle(state.players.map(p => p.id));
+  state.phase = 'playing';
+
+  for (const p of state.players) {
+    if (isAI(p.id)) continue;
+    try {
+      const member = await message.guild.members.fetch(p.id);
+      await member.send({ embeds: [e(`🃏 **你的手牌：**\n${p.cards.map(c => ROLES[c].name).join('、')}\n\n💰 金幣：${p.coins}`)] });
+    } catch {
+      await message.channel.send({ embeds: [e(`⚠️ 無法私訊 ${p.name}！`)] });
+    }
+  }
+
+  const modeText = state.reactionMode === 'button' ? '🖱️ 按鈕確認' : '⏱️ 30秒計時';
+  const orderNames = state.order.map((id, i) => `${i + 1}. ${findPlayer(id).name}`).join('\n');
+  await message.channel.send({ embeds: [e(`🃏 **政變開始！共 ${state.players.length} 人**\n反應模式：${modeText}\n\n每人 2 張牌 + 2 💰\n手牌已透過 DM 發送！\n\n📋 行動順序：\n${orderNames}`)] });
+
+  await startTurn(message.channel);
+}
+
 // ─── 指令 ───
 const commands = {
   async cs(message) {
@@ -946,34 +1034,35 @@ const commands = {
     if (message.author.id !== state.hostId) return message.reply({ embeds: [e('❌ 只有開局人才能開始遊戲！')] });
     if (state.players.length < 2) return message.reply({ embeds: [e('❌ 至少需要 2 人！')] });
 
-    state.guild = message.guild;
-    state.deck = buildDeck();
+    // 選擇反應模式
+    const ts = Date.now();
+    const modeRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`cmode_${ts}_timer`).setLabel('⏱️ 30秒計時').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`cmode_${ts}_button`).setLabel('🖱️ 按鈕確認').setStyle(ButtonStyle.Success),
+    );
+    const modeMsg = await message.channel.send({
+      embeds: [e('🃏 **選擇反應模式：**\n\n⏱️ **30秒計時** — 每次行動後等 30 秒\n🖱️ **按鈕確認** — 所有人按「放行」後立即繼續')],
+      components: [modeRow],
+    });
 
-    // 發牌 + 給金幣
-    for (const p of state.players) {
-      p.cards = [state.deck.pop(), state.deck.pop()];
-      p.coins = 2;
-    }
+    const modeColl = modeMsg.createMessageComponentCollector({
+      filter: i => i.customId.startsWith(`cmode_${ts}_`) && i.user.id === state.hostId,
+      max: 1, time: 30000,
+    });
 
-    // 隨機順序
-    state.order = shuffle(state.players.map(p => p.id));
-    state.phase = 'playing';
+    modeColl.on('collect', async (i) => {
+      state.reactionMode = i.customId.replace(`cmode_${ts}_`, ''); // 'timer' or 'button'
+      await i.update({ embeds: [e(`✅ 反應模式：**${state.reactionMode === 'timer' ? '⏱️ 30秒計時' : '🖱️ 按鈕確認'}**`)], components: [] });
+      await startGame(message);
+    });
 
-    // DM 手牌（跳過 AI）
-    for (const p of state.players) {
-      if (isAI(p.id)) continue;
-      try {
-        const member = await message.guild.members.fetch(p.id);
-        await member.send({ embeds: [e(`🃏 **你的手牌：**\n${p.cards.map(c => ROLES[c].name).join('、')}\n\n💰 金幣：${p.coins}`)] });
-      } catch {
-        await message.channel.send({ embeds: [e(`⚠️ 無法私訊 ${p.name}！`)] });
+    modeColl.on('end', (c) => {
+      if (c.size === 0) {
+        state.reactionMode = 'timer';
+        modeMsg.edit({ embeds: [e('⏱️ 超時，預設 30 秒計時模式')], components: [] }).catch(() => {});
+        startGame(message);
       }
-    }
-
-    const orderNames = state.order.map((id, i) => `${i + 1}. ${findPlayer(id).name}`).join('\n');
-    await message.channel.send({ embeds: [e(`🃏 **政變開始！共 ${state.players.length} 人**\n\n每人 2 張牌 + 2 💰\n手牌已透過 DM 發送！\n\n📋 行動順序：\n${orderNames}`)] });
-
-    await startTurn(message.channel);
+    });
   },
 
   async cc(message) {
