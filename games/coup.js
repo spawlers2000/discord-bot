@@ -73,6 +73,16 @@ async function loseInfluence(channel, playerId, reason) {
     return;
   }
 
+  // AI 自動翻牌
+  if (isAI(playerId)) {
+    const idx = aiChooseRevealCard(player);
+    const card = player.cards.splice(idx, 1)[0];
+    player.revealedCards.push(card);
+    await channel.send({ embeds: [e(`💀 **${player.name}** 翻開了 ${ROLES[card].name}！\n\n${reason}`)] });
+    if (player.cards.length === 0) player.alive = false;
+    return;
+  }
+
   // 有 2 張牌，讓玩家用 ephemeral 選擇翻開哪張
   const ts = Date.now();
   const triggerRow = new ActionRowBuilder().addComponents(
@@ -174,11 +184,13 @@ async function resolveChallenge(channel, challengerId, targetId, claimedRole) {
     const newCard = state.deck.pop();
     target.cards.push(newCard);
 
-    // DM 通知新牌
-    try {
-      const member = await state.guild.members.fetch(targetId);
-      await member.send({ embeds: [e(`🔄 你的 ${ROLES[claimedRole].name} 放回牌庫，抽到新牌：**${ROLES[newCard].name}**\n\n${getHandText(target)}`)] });
-    } catch {}
+    // DM 通知新牌（跳過 AI）
+    if (!isAI(targetId)) {
+      try {
+        const member = await state.guild.members.fetch(targetId);
+        await member.send({ embeds: [e(`🔄 你的 ${ROLES[claimedRole].name} 放回牌庫，抽到新牌：**${ROLES[newCard].name}**\n\n${getHandText(target)}`)] });
+      } catch {}
+    }
 
     // 質疑者失去影響力
     await loseInfluence(channel, challengerId, '質疑失敗，失去一點影響力');
@@ -210,6 +222,26 @@ async function showReactionWindow(channel, actionPlayerId, actionText, canChalle
   });
 
   return new Promise((resolve) => {
+    // AI 自動反應
+    const aiReactors = getAlivePlayers().filter(p => isAI(p.id) && p.id !== actionPlayerId);
+    let aiHandled = false;
+    for (const ai of aiReactors) {
+      if (canChallenge && Math.random() < 0.15) {
+        aiHandled = true;
+        msg.edit({ components: [] }).catch(() => {}); resolve({ type: "challenge", playerId: ai.id });
+        break;
+      }
+      if (blockInfo) {
+        const canBlock = !blockInfo.targetId || blockInfo.targetId === ai.id || blockInfo.anyoneCanBlock;
+        if (canBlock && aiShouldBlock(ai, blockInfo.blockRoles || [])) {
+          aiHandled = true;
+          msg.edit({ components: [] }).catch(() => {}); resolve({ type: "block", playerId: ai.id });
+          break;
+        }
+      }
+    }
+    if (aiHandled) return;
+
     const collector = msg.createMessageComponentCollector({
       filter: i => i.customId.startsWith(`react_${ts}_`) && i.user.id !== actionPlayerId,
       max: 1, time: REACTION_TIME,
@@ -252,6 +284,15 @@ async function showBlockChallengeWindow(channel, blockerId, blockerName, claimed
   });
 
   return new Promise((resolve) => {
+    // AI 自動質疑阻礙
+    const aiReactors = getAlivePlayers().filter(p => isAI(p.id) && p.id !== blockerId);
+    for (const ai of aiReactors) {
+      if (Math.random() < 0.2) {
+        msg.edit({ components: [] }).catch(() => {}); resolve({ type: "challenge", playerId: ai.id });
+        return;
+      }
+    }
+
     const collector = msg.createMessageComponentCollector({
       filter: i => i.customId === `blockreact_${ts}_challenge` && i.user.id !== blockerId,
       max: 1, time: REACTION_TIME,
@@ -276,6 +317,20 @@ async function executeExchange(channel, playerId) {
   const drawn = [state.deck.pop(), state.deck.pop()];
   const allCards = [...player.cards, ...drawn];
   const keepCount = player.cards.length;
+
+  // AI 自動選牌
+  if (isAI(playerId)) {
+    
+    const selected = aiChooseExchangeKeep(allCards, keepCount);
+    const kept = selected.map(idx => allCards[idx]);
+    const returned = allCards.filter((_, idx) => !selected.includes(idx));
+    player.cards = kept;
+    state.deck.push(...returned);
+    state.deck = shuffle(state.deck);
+    await channel.send({ embeds: [e(`🔄 **${player.name}** 換牌完成！`)] });
+    return;
+  }
+
   const ts = Date.now();
 
   // 公開訊息 + 按鈕觸發 ephemeral 選牌
@@ -436,10 +491,18 @@ async function startTurn(channel) {
   );
 
   const msg = await channel.send({
-    content: `<@${currentId}>`,
+    content: isAI(currentId) ? undefined : `<@${currentId}>`,
     embeds: [e(`📋 **場上狀態：**\n${statusText}\n\n🎯 輪到 **${player.name}** 行動！`)],
-    components: [row1, row2],
+    components: isAI(currentId) ? [] : [row1, row2],
   });
+
+  // AI 自動行動
+  if (isAI(currentId)) {
+    
+    const action = aiChooseAction(player);
+    await processAction(channel, player, action);
+    return;
+  }
 
   // 等待行動選擇
   const collector = msg.createMessageComponentCollector({
@@ -473,6 +536,20 @@ async function startTurn(channel) {
 // ─── 強制政變 ───
 async function handleForcedCoup(channel, player) {
   const targets = getAlivePlayers().filter(p => p.id !== player.id);
+
+  // AI 自動選目標
+  if (isAI(player.id)) {
+    
+    const targetId = aiChooseTarget(player);
+    const target = findPlayer(targetId);
+    player.coins -= 7;
+    await channel.send({ embeds: [e(`⚔️ **${player.name}** 發動政變，對 **${target.name}** 使用了 7 💰！`)] });
+    await loseInfluence(channel, targetId, '被政變，失去一點影響力');
+    state.orderIndex = (state.orderIndex + 1) % state.order.length;
+    await startTurn(channel);
+    return;
+  }
+
   const ts = Date.now();
   const rows = [];
   for (let i = 0; i < targets.length; i += 5) {
@@ -729,7 +806,26 @@ async function handleBlock(channel, attacker, target, reaction, blockRole, actio
 // 處理偷竊的阻礙（可宣稱隊長或大使）
 async function handleStealBlock(channel, stealer, target, reaction) {
   const blocker = findPlayer(reaction.playerId);
-  // 阻礙偷竊可以宣稱隊長或大使，先問宣稱什麼
+
+  // AI 自動選擇宣稱角色
+  if (isAI(blocker.id)) {
+    const claimedRole = blocker.cards.includes('captain') ? 'captain' : 'ambassador';
+    const blockResult = await showBlockChallengeWindow(channel, blocker.id, blocker.name, claimedRole);
+    if (blockResult.type === 'challenge') {
+      const success = await resolveChallenge(channel, blockResult.playerId, blocker.id, claimedRole);
+      if (success) {
+        await channel.send({ embeds: [e(`🛡️ 阻礙成功！偷竊被擋下。`)] });
+      } else {
+        const stolen = Math.min(2, target.coins);
+        target.coins -= stolen;
+        stealer.coins += stolen;
+        await channel.send({ embeds: [e(`🏴‍☠️ 阻礙失敗！**${stealer.name}** 偷了 **${target.name}** ${stolen} 💰！`)] });
+      }
+    }
+    return;
+  }
+
+  // 玩家選擇宣稱角色
   const ts = Date.now();
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`stealblock_${ts}_captain`).setLabel('🏴‍☠️ 宣稱隊長').setStyle(ButtonStyle.Primary),
@@ -773,6 +869,13 @@ async function handleStealBlock(channel, stealer, target, reaction) {
 
 // 選擇目標
 async function selectTarget(channel, player, targets, prompt) {
+  // AI 自動選目標
+  if (isAI(player.id)) {
+    
+    const targetId = aiChooseTarget(player);
+    return targetId;
+  }
+
   const ts = Date.now();
   const rows = [];
   for (let i = 0; i < targets.length; i += 5) {
@@ -817,8 +920,20 @@ const commands = {
     message.channel.send({ embeds: [e(`🃏 **政變開局！**\n👑 開局人：${message.member.displayName}\n\n輸入 \`!cj\` 加入遊戲\n開局人輸入 \`!cb\` 開始遊戲（2~6 人）\n\n目前玩家（1人）：${message.member.displayName}`)] });
   },
 
-  async cj(message) {
+  async cj(message, args) {
     if (state.phase !== 'waiting') return message.reply({ embeds: [e('❌ 目前沒有開放加入的政變局！')] });
+
+    // 加入 AI
+    if (args && args[0] && ['ai', 'AI', '電腦'].includes(args[0])) {
+      if (state.players.length >= 6) return message.reply({ embeds: [e('❌ 已滿 6 人！')] });
+      const aiNum = state.players.filter(p => isAI(p.id)).length + 1;
+      const aiId = `AI_${Date.now()}_${aiNum}`;
+      state.players.push({ id: aiId, name: `🤖 電腦${aiNum}`, coins: 0, cards: [], revealedCards: [], alive: true, isAI: true });
+      const names = state.players.map(p => p.name).join('、');
+      message.channel.send({ embeds: [e(`✅ **🤖 電腦${aiNum}** 加入政變！\n目前玩家（${state.players.length}人）：${names}`)] });
+      return;
+    }
+
     if (state.players.find(p => p.id === message.author.id)) return message.reply({ embeds: [e('❌ 你已經加入了！')] });
     if (state.players.length >= 6) return message.reply({ embeds: [e('❌ 已滿 6 人！')] });
     state.players.push({ id: message.author.id, name: message.member.displayName, coins: 0, cards: [], revealedCards: [], alive: true });
@@ -844,8 +959,9 @@ const commands = {
     state.order = shuffle(state.players.map(p => p.id));
     state.phase = 'playing';
 
-    // DM 手牌
+    // DM 手牌（跳過 AI）
     for (const p of state.players) {
+      if (isAI(p.id)) continue;
       try {
         const member = await message.guild.members.fetch(p.id);
         await member.send({ embeds: [e(`🃏 **你的手牌：**\n${p.cards.map(c => ROLES[c].name).join('、')}\n\n💰 金幣：${p.coins}`)] });
@@ -946,3 +1062,70 @@ const commands = {
 };
 
 export default commands;
+
+// ─── AI 邏輯 ───
+function isAI(playerId) {
+  return playerId && playerId.startsWith('AI_');
+}
+
+function aiChooseAction(player) {
+  const hasRole = (role) => player.cards.includes(role);
+  if (player.coins >= 10) return 'coup';
+  if (player.coins >= 7 && Math.random() < 0.6) return 'coup';
+  if (player.coins >= 3 && (hasRole('assassin') || Math.random() < 0.3)) return 'assassinate';
+  if (hasRole('duke') || Math.random() < 0.4) return 'tax';
+  if (hasRole('captain') || Math.random() < 0.2) return 'steal';
+  if (hasRole('ambassador') || Math.random() < 0.15) return 'exchange';
+  return Math.random() < 0.5 ? 'income' : 'foreign_aid';
+}
+
+function aiChooseTarget(player) {
+  const targets = getAlivePlayers().filter(p => p.id !== player.id);
+  if (targets.length === 0) return null;
+  // 優先攻擊只剩 1 張牌的
+  const weak = targets.filter(p => p.cards.length === 1);
+  if (weak.length > 0) return weak[Math.floor(Math.random() * weak.length)].id;
+  return targets[Math.floor(Math.random() * targets.length)].id;
+}
+
+function aiShouldChallenge(claimedRole, challengerCards) {
+  // 如果 AI 手上有對方宣稱的角色，挑戰機率高
+  if (challengerCards.includes(claimedRole)) return Math.random() < 0.5;
+  return Math.random() < 0.15; // 15% 隨機質疑
+}
+
+function aiShouldBlock(player, blockRoles) {
+  if (!blockRoles) return false;
+  // 有對應角色就擋
+  for (const role of blockRoles) {
+    if (player.cards.includes(role)) return true;
+  }
+  return Math.random() < 0.2; // 20% 虛張聲勢擋
+}
+
+function aiChooseRevealCard(player) {
+  // 翻掉比較沒用的牌
+  const priority = ['ambassador', 'contessa', 'captain', 'duke', 'assassin'];
+  for (const role of priority) {
+    const idx = player.cards.indexOf(role);
+    if (idx >= 0) return idx;
+  }
+  return 0;
+}
+
+function aiChooseExchangeKeep(allCards, keepCount) {
+  // 保留優先：assassin > duke > captain > contessa > ambassador
+  const priority = ['assassin', 'duke', 'captain', 'contessa', 'ambassador'];
+  const selected = [];
+  for (const role of priority) {
+    if (selected.length >= keepCount) break;
+    const idx = allCards.findIndex((c, i) => c === role && !selected.includes(i));
+    if (idx >= 0) selected.push(idx);
+  }
+  while (selected.length < keepCount) {
+    for (let i = 0; i < allCards.length; i++) {
+      if (!selected.includes(i)) { selected.push(i); break; }
+    }
+  }
+  return selected;
+}
